@@ -235,10 +235,19 @@ bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
     : `\n\nЗа день: ${totals.kcal} ккал`;
 
   await ctx.answerCallbackQuery({ text: 'Сохранено' });
-  await ctx.editMessageText(
-    `${ctx.callbackQuery.message?.text ?? 'Записано'}${tail}`,
-    { parse_mode: 'HTML' },
-  );
+
+  // Разметку переносим через entities, а не через parse_mode.
+  // message.text отдаёт текст уже без тегов, поэтому повторная отправка
+  // с parse_mode: 'HTML' рендерила бы его без жирного и курсива —
+  // сохранённая запись выглядела бы беднее, чем та же карточка до нажатия.
+  // Хвост дописывается в конец, поэтому смещения существующих entities
+  // остаются верными и переносятся как есть.
+  const original = ctx.callbackQuery.message;
+  const text = (original && 'text' in original ? original.text : null) ?? 'Записано';
+  const entities =
+    original && 'entities' in original ? original.entities : undefined;
+
+  await ctx.editMessageText(`${text}${tail}`, { entities });
 });
 
 bot.callbackQuery(/^discard:(.+)$/, async (ctx) => {
