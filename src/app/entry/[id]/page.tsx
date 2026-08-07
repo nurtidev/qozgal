@@ -6,9 +6,9 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   api,
   ApiError,
-  getWebApp,
-  applyTheme,
   haptic,
+  useTelegramApp,
+  useTelegramBack,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -148,28 +148,12 @@ export default function EntryPage() {
     }
   }, [entryId]);
 
+  useTelegramApp();
+  useTelegramBack(leave);
+
   useEffect(() => {
-    const app = getWebApp();
-    if (app) {
-      app.ready();
-      app.expand();
-      applyTheme(app);
-    }
     load();
   }, [load]);
-
-  // Системная кнопка «назад» в шапке Telegram: на этом экране она
-  // единственный привычный выход, своей стрелки в Mini App нет
-  useEffect(() => {
-    const back = getWebApp()?.BackButton;
-    if (!back) return;
-    back.onClick(leave);
-    back.show();
-    return () => {
-      back.offClick(leave);
-      back.hide();
-    };
-  }, [leave]);
 
   // Взведённое удаление само остывает: иначе случайный первый тап оставил бы
   // кнопку заряженной, и следующий — уже по другому поводу — стёр бы запись

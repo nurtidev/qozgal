@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { api, ApiError, getWebApp, applyTheme } from '@/lib/telegram/client';
+import { api, ApiError, useTelegramApp } from '@/lib/telegram/client';
 import {
   Screen,
   Card,
@@ -82,13 +82,9 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+  useTelegramApp();
+
   useEffect(() => {
-    const app = getWebApp();
-    if (app) {
-      app.ready();
-      app.expand();
-      applyTheme(app);
-    }
     load();
   }, [load]);
 
@@ -196,21 +192,45 @@ export default function DashboardPage() {
         )}
       </section>
 
-      <Card className="flex items-center justify-between">
-        <div className="flex flex-col">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">Вес</span>
-          <span className="tabular text-lg font-medium">
-            {me.weight ? `${me.weight.kg} кг` : 'не записан'}
-          </span>
-        </div>
-        <button
-          onClick={() => router.push('/weight')}
-          className="rounded-xl bg-[var(--tg-theme-bg-color)] px-4 py-2 text-sm font-medium"
-        >
-          Записать
-        </button>
-      </Card>
+      <section className="flex flex-col gap-2">
+        <NavRow
+          caption="Вес"
+          title={me.weight ? `${me.weight.kg} кг` : 'не записан'}
+          onOpen={() => router.push('/weight')}
+        />
+        <NavRow
+          title="Замеры тела"
+          onOpen={() => router.push('/measurements')}
+        />
+      </section>
     </Screen>
+  );
+}
+
+/** Строка-переход в раздел: название, текущее значение над ним и стрелка */
+function NavRow({
+  title,
+  caption,
+  onOpen,
+}: {
+  title: string;
+  caption?: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button onClick={onOpen} className="w-full text-left">
+      <Card className="flex items-center justify-between gap-3">
+        <div className="flex flex-col">
+          {caption && (
+            <span className="text-sm text-[var(--tg-theme-hint-color)]">
+              {caption}
+            </span>
+          )}
+          <span className="tabular text-lg font-medium">{title}</span>
+        </div>
+        <span className="text-lg text-[var(--tg-theme-hint-color)]">›</span>
+      </Card>
+    </button>
   );
 }
 

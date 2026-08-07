@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+
 /**
  * Клиентская сторона моста Telegram.
  *
@@ -61,6 +63,43 @@ export function applyTheme(app: TelegramWebApp): void {
     root.style.setProperty('color-scheme', app.colorScheme);
     root.dataset.theme = app.colorScheme;
   }
+}
+
+/* ──────────────────────────── Хуки экрана ──────────────────────────── */
+
+/**
+ * Стартовая последовательность Mini App: сообщить клиенту, что страница
+ * готова, развернуть окно на весь экран и перенести палитру в CSS.
+ * Нужна каждому экрану, поэтому вынесена сюда — забытый вызов означает
+ * свёрнутое окно и белый фон в тёмной теме.
+ */
+export function useTelegramApp(): void {
+  useEffect(() => {
+    const app = getWebApp();
+    if (!app) return;
+    app.ready();
+    app.expand();
+    applyTheme(app);
+  }, []);
+}
+
+/**
+ * Системная кнопка «назад» в шапке Telegram.
+ *
+ * На внутренних экранах она единственный привычный выход: своей стрелки
+ * в Mini App нет, а свайп назад работает не на всех платформах.
+ */
+export function useTelegramBack(onBack: () => void): void {
+  useEffect(() => {
+    const back = getWebApp()?.BackButton;
+    if (!back) return;
+    back.onClick(onBack);
+    back.show();
+    return () => {
+      back.offClick(onBack);
+      back.hide();
+    };
+  }, [onBack]);
 }
 
 /* ─────────────────────────── Запросы к API ─────────────────────────── */

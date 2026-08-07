@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { api, ApiError, getWebApp, applyTheme, haptic } from '@/lib/telegram/client';
+import { api, ApiError, haptic, useTelegramApp } from '@/lib/telegram/client';
 import {
   Screen,
   Card,
@@ -75,14 +75,7 @@ export default function OnboardingPage() {
   const [goalType, setGoalType] = useState<GoalType | null>(null);
   const [weeklyRate, setWeeklyRate] = useState('0.5');
 
-  useEffect(() => {
-    const app = getWebApp();
-    if (app) {
-      app.ready();
-      app.expand();
-      applyTheme(app);
-    }
-  }, []);
+  useTelegramApp();
 
   const num = (v: string) => Number(v.replace(',', '.'));
 

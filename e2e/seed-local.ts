@@ -6,11 +6,13 @@ import {
   profiles,
   goals,
   weightLogs,
+  bodyMeasurements,
   foodEntries,
   foodItems,
   products,
 } from '@/db/schema';
 import { scaleToPortion } from '@/lib/nutrition/resolve';
+import { calcBodyFatPct } from '@/lib/health/composition';
 import { DEFAULT_USER } from './lib/telegram-stub';
 
 /**
@@ -89,13 +91,23 @@ async function main() {
       userId: user.id,
       type: 'lose',
       weeklyRateKg: -0.5,
+      targetWeightKg: 76,
       kcalTarget: 2209,
       proteinTargetG: 160,
       fatTargetG: 61,
       carbTargetG: 285,
       isActive: true,
     });
+  } else if (goal.targetWeightKg == null) {
+    // Цель по весу рисуется на графике пунктиром — без неё проверять нечего
+    await db
+      .update(goals)
+      .set({ targetWeightKg: 76 })
+      .where(eq(goals.id, goal.id));
   }
+
+  await seedWeight(user.id);
+  await seedMeasurements(user.id);
 
   // Позиция со ссылкой на справочник — на ней видно, что правка граммовки
   // пересчитывается от карточки продукта, а не от снапшота
@@ -170,6 +182,73 @@ async function main() {
   console.log(`Запись:       ${entry.id}`);
   console.log(`Экран:        http://localhost:3000/entry/${entry.id}`);
   process.exit(0);
+}
+
+/** Дата N дней назад в формате ГГГГ-ММ-ДД */
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Два месяца взвешиваний с провалами в расписании.
+ *
+ * Колебание задаётся синусом, а не случайным числом: повторный запуск
+ * должен давать тот же график, иначе скриншоты не сравнить между собой.
+ * Пропуски нужны намеренно — по ним видно, что ось X идёт по датам, а не
+ * по номеру записи.
+ */
+async function seedWeight(userId: string) {
+  for (let ago = 60; ago >= 0; ago--) {
+    if (ago % 3 === 1) continue; // пропущенные дни
+    if (ago > 20 && ago < 30) continue; // отпуск без весов
+
+    const weightKg =
+      Math.round((82 - 0.055 * (60 - ago) + 0.5 * Math.sin(ago * 1.7)) * 10) / 10;
+
+    await db
+      .insert(weightLogs)
+      .values({ userId, loggedOn: daysAgo(ago), weightKg })
+      .onConflictDoUpdate({
+        target: [weightLogs.userId, weightLogs.loggedOn],
+        set: { weightKg },
+      });
+  }
+}
+
+/** Три замера с уходящей талией — на них видно динамику процента жира */
+async function seedMeasurements(userId: string) {
+  const rows = [
+    { ago: 42, neckCm: 39, waistCm: 92, chestCm: 104, bicepsCm: 35 },
+    { ago: 21, neckCm: 38.5, waistCm: 89, chestCm: 103, bicepsCm: 35 },
+    { ago: 3, neckCm: 38, waistCm: 86.5, chestCm: 102, bicepsCm: 35.5 },
+  ];
+
+  for (const row of rows) {
+    const bodyFatPct = calcBodyFatPct({
+      sex: 'male',
+      heightCm: 180,
+      neckCm: row.neckCm,
+      waistCm: row.waistCm,
+    });
+
+    await db
+      .insert(bodyMeasurements)
+      .values({
+        userId,
+        measuredOn: daysAgo(row.ago),
+        neckCm: row.neckCm,
+        waistCm: row.waistCm,
+        chestCm: row.chestCm,
+        bicepsCm: row.bicepsCm,
+        bodyFatPct,
+      })
+      .onConflictDoUpdate({
+        target: [bodyMeasurements.userId, bodyMeasurements.measuredOn],
+        set: { neckCm: row.neckCm, waistCm: row.waistCm, bodyFatPct },
+      });
+  }
 }
 
 main().catch((error) => {
