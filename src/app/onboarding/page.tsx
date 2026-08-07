@@ -40,6 +40,23 @@ const ACTIVITY_OPTIONS: { value: Activity; label: string; hint: string }[] = [
 
 const STEPS = ['Кто вы', 'Параметры', 'Образ жизни', 'Каркас', 'Цель'] as const;
 
+/** Дата ровно N лет назад — границы выбора в поле даты рождения */
+function dateYearsAgo(years: number): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Полных лет по дате рождения — показываем сразу под полем для самопроверки */
+function calcAgeFrom(iso: string): number {
+  const b = new Date(iso);
+  const now = new Date();
+  let age = now.getFullYear() - b.getFullYear();
+  const m = now.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age -= 1;
+  return age;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -153,7 +170,13 @@ export default function OnboardingPage() {
             type="date"
             value={birthDate}
             error={fields.birthDate}
+            // Границы обязательны: без них в выборе доступны будущие даты,
+            // а WebKit ещё и рисует в пустом поле сегодняшнее число, из-за
+            // чего поле выглядит уже заполненным
+            min={dateYearsAgo(100)}
+            max={dateYearsAgo(14)}
             onChange={(e) => setBirthDate(e.target.value)}
+            hint={birthDate ? `${calcAgeFrom(birthDate)} лет` : 'Выберите дату'}
           />
           <Hint>
             Пол и возраст входят в формулу основного обмена — без них норма
