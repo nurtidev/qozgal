@@ -1,26 +1,76 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
+/**
+ * Палитра берётся у клиента Telegram через переменные --tg-theme-*,
+ * которые проставляет applyTheme() при старте. Значения ниже — запасные,
+ * на случай если приложение открыли вне Telegram или клиент не передал
+ * тему: без них интерфейс остался бы нечитаемым.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --tg-theme-bg-color: #ffffff;
+  --tg-theme-text-color: #000000;
+  --tg-theme-hint-color: #707579;
+  --tg-theme-link-color: #3390ec;
+  --tg-theme-button-color: #3390ec;
+  --tg-theme-button-text-color: #ffffff;
+  --tg-theme-secondary-bg-color: #f4f4f5;
+  --tg-theme-destructive-text-color: #e53935;
+
+  /* Насыщенность колец и полос прогресса: одна шкала на всё приложение */
+  --accent-protein: #4a90d9;
+  --accent-fat: #f0a04b;
+  --accent-carbs: #7cb342;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--tg-theme-bg-color);
+  --color-surface: var(--tg-theme-secondary-bg-color);
+  --color-fg: var(--tg-theme-text-color);
+  --color-hint: var(--tg-theme-hint-color);
+  --color-link: var(--tg-theme-link-color);
+  --color-accent: var(--tg-theme-button-color);
+  --color-accent-fg: var(--tg-theme-button-text-color);
+  --color-danger: var(--tg-theme-destructive-text-color);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--tg-theme-bg-color);
+  color: var(--tg-theme-text-color);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* Safe-area внизу: на айфонах без неё кнопки уезжают под системную полосу */
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* Числа в таблицах и итогах не должны прыгать по ширине при изменении */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Плавное появление содержимого после загрузки данных */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in {
+    animation: none;
+  }
 }

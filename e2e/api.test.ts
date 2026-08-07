@@ -32,6 +32,21 @@ const BOB: StubUser = {
   language_code: 'ru',
 };
 
+/**
+ * Дата рождения, дающая ровно N полных лет на сегодня.
+ *
+ * Фиксированную дату брать нельзя: возраст входит в формулу обмена, и через
+ * год те же ожидаемые значения перестали бы сходиться. Отнимаем лишний день,
+ * чтобы день рождения гарантированно уже прошёл и возраст не зависел от того,
+ * в какую сторону округлится сегодняшняя дата.
+ */
+function birthDateForAge(age: number): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - age);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function authHeader(user: StubUser): Record<string, string> {
   return {
     authorization: `tma ${signInitData(user, BOT_TOKEN!)}`,
@@ -72,8 +87,10 @@ describe('Авторизация', () => {
   });
 
   test('чужая схема авторизации — 401', async () => {
+    // Значение заголовка только латиницей: HTTP-заголовки обязаны быть ASCII,
+    // кириллица в них падает ещё в клиенте, не доходя до сервера
     const response = await fetch(`${BASE_URL}/api/me`, {
-      headers: { authorization: 'Bearer подделка' },
+      headers: { authorization: 'Bearer forged-token' },
     });
     assert.equal(response.status, 401);
   });
@@ -108,7 +125,7 @@ describe('Онбординг', () => {
       method: 'POST',
       body: JSON.stringify({
         sex: 'male',
-        birthDate: '1995-03-20',
+        birthDate: birthDateForAge(30),
         heightCm: 180,
         weightKg: 80,
         activityLevel: 'moderate',
@@ -134,7 +151,7 @@ describe('Онбординг', () => {
       method: 'POST',
       body: JSON.stringify({
         sex: 'male',
-        birthDate: '1995-03-20',
+        birthDate: birthDateForAge(30),
         heightCm: 180,
         weightKg: 80,
         activityLevel: 'moderate',
@@ -155,7 +172,7 @@ describe('Онбординг', () => {
       method: 'POST',
       body: JSON.stringify({
         sex: 'male',
-        birthDate: '1995-03-20',
+        birthDate: birthDateForAge(30),
         heightCm: 40,
         weightKg: 80,
         activityLevel: 'moderate',

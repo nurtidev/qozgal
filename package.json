@@ -17,7 +17,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "bench:photo": "tsx src/bench.ts",
     "bench:text": "tsx src/bench-text.ts",
-    "shot": "tsx e2e/shot.ts"
+    "shot": "tsx e2e/shot.ts",
+    "test:api": "tsx --test e2e/api.test.ts"
   },
   "overrides": {
     "valibot": "^1.4.2",
@@ -25,7 +26,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
-    "@telegram-apps/sdk-react": "^3.3.9",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.2",
     "grammy": "^1.45.1",
