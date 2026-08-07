@@ -62,9 +62,14 @@ export type Recognition = z.infer<typeof recognitionSchema>;
 
 /* ─────────────────── Результат работы модуля ───────────────────────── */
 
+/**
+ * Отказ описывается кодом, а не фразой: текст для пользователя лежит
+ * в словарях (`bot.failure.*`) и зависит от его языка, а модуль
+ * распознавания языка интерфейса не знает.
+ */
 export type RecognitionOutcome =
   | { ok: true; recognition: Recognition; meta: RecognitionMeta }
-  | { ok: false; reason: RecognitionFailure; message: string };
+  | { ok: false; reason: RecognitionFailure };
 
 export type RecognitionFailure =
   | 'not_food' // на фото не еда
@@ -89,10 +94,3 @@ export interface RecognitionMeta {
   cacheWriteTokens: number;
 }
 
-export const FAILURE_MESSAGES: Record<RecognitionFailure, string> = {
-  not_food: 'На фото не удалось найти еду. Пришлите снимок блюда или опишите словами.',
-  refused: 'Не получилось разобрать этот запрос. Попробуйте описать еду словами.',
-  empty: 'Не удалось выделить продукты. Попробуйте снять ближе или при лучшем свете.',
-  malformed: 'Разбор не удался, попробуйте ещё раз.',
-  api_error: 'Сервис распознавания временно недоступен, попробуйте через минуту.',
-};

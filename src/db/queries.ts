@@ -8,6 +8,7 @@ import {
   type User,
   type MealType,
 } from './schema';
+import { toLocale } from '@/i18n/messages';
 import type { ResolvedItem } from '@/lib/nutrition/resolve';
 import type { Recognition } from '@/lib/ai/schemas';
 
@@ -68,14 +69,14 @@ export async function getOrCreateUser(
       username: identity.username ?? null,
       firstName: identity.firstName ?? null,
       lastName: identity.lastName ?? null,
-      locale: identity.languageCode?.toLowerCase().startsWith('kk')
-        ? 'kk'
-        : 'ru',
+      locale: toLocale(identity.languageCode),
       lastSeenAt: now,
     })
     .onConflictDoUpdate({
       target: users.telegramId,
-      set: { lastSeenAt: now, updatedAt: now },
+      // Язык обновляется на каждом апдейте: переключив клиент Telegram
+      // на казахский, человек ждёт казахский и от бота
+      set: { locale: toLocale(identity.languageCode), lastSeenAt: now, updatedAt: now },
     })
     .returning();
 

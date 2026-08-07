@@ -6,7 +6,6 @@ import { env } from '@/env';
 import { FOOD_RECOGNITION_SYSTEM, buildTimeHint } from './prompts';
 import {
   recognitionSchema,
-  FAILURE_MESSAGES,
   type Recognition,
   type RecognitionOutcome,
   type RecognitionFailure,
@@ -275,5 +274,5 @@ function apiFailure(error: unknown): RecognitionOutcome {
 }
 
 function fail(reason: RecognitionFailure): RecognitionOutcome {
-  return { ok: false, reason, message: FAILURE_MESSAGES[reason] };
+  return { ok: false, reason };
 }

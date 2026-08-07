@@ -11,8 +11,14 @@ import { buildDailyPlan } from '@/lib/health/energy';
 const schema = z.object({
   sex: z.enum(['male', 'female']),
   birthDate: dateSchema,
-  heightCm: z.number().min(100, 'Рост меньше 100 см').max(250, 'Рост больше 250 см'),
-  weightKg: z.number().min(30, 'Вес меньше 30 кг').max(400, 'Вес больше 400 кг'),
+  heightCm: z
+    .number()
+    .min(100, 'errors.heightTooLow')
+    .max(250, 'errors.heightTooHigh'),
+  weightKg: z
+    .number()
+    .min(30, 'errors.weightTooLow')
+    .max(400, 'errors.weightTooHigh'),
   activityLevel: z.enum(['sedentary', 'light', 'moderate', 'high', 'athlete']),
 
   // Каркас скелета — меряется один раз, дальше не меняется
@@ -34,14 +40,17 @@ const schema = z.object({
  * в наполовину настроенном состоянии — дашборд не знает, от чего считать
  * остаток калорий.
  */
-export const POST = route(async ({ session, request }) => {
+export const POST = route(async ({ session, request, t }) => {
   const body = await parseBody(request, schema);
   const { user } = session;
 
   const age = calcAge(body.birthDate);
   if (age < 14 || age > 100) {
     return Response.json(
-      { error: 'Проверьте дату рождения', fields: { birthDate: 'Возраст вне разумных границ' } },
+      {
+        error: t('errors.birthDateInvalid'),
+        fields: { birthDate: t('errors.ageOutOfRange') },
+      },
       { status: 422 },
     );
   }

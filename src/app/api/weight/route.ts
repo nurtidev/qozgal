@@ -8,7 +8,10 @@ import { localDate } from '@/db/queries';
 import { movingAverageWeight } from '@/lib/health/composition';
 
 const postSchema = z.object({
-  weightKg: z.number().min(30, 'Меньше 30 кг').max(400, 'Больше 400 кг'),
+  weightKg: z
+    .number()
+    .min(30, 'errors.weightTooLow')
+    .max(400, 'errors.weightTooHigh'),
   loggedOn: dateSchema.optional(),
   note: z.string().max(200).optional(),
 });

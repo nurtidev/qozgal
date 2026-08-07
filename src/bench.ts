@@ -27,7 +27,7 @@ async function main() {
   const elapsed = Date.now() - started;
 
   if (!outcome.ok) {
-    console.log(`  ОТКАЗ: ${outcome.reason} — ${outcome.message}`);
+    console.log(`  ОТКАЗ: ${outcome.reason}`);
     return;
   }
 

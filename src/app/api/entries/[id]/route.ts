@@ -26,10 +26,10 @@ async function ownedEntry(entryId: string, userId: string) {
 
 /* ───────────────────────────── Чтение ──────────────────────────────── */
 
-export const GET = route<Params>(async ({ session, params }) => {
+export const GET = route<Params>(async ({ session, params, t }) => {
   const entry = await ownedEntry(params.id, session.user.id);
   if (!entry) {
-    return Response.json({ error: 'Запись не найдена' }, { status: 404 });
+    return Response.json({ error: t('errors.entryNotFound') }, { status: 404 });
   }
 
   const items = await db
@@ -86,10 +86,10 @@ const patchSchema = z.object({
  * привязки к продукту масштабируем сохранённый снапшот, другого источника
  * у них нет.
  */
-export const PATCH = route<Params>(async ({ session, request, params }) => {
+export const PATCH = route<Params>(async ({ session, request, params, t }) => {
   const entry = await ownedEntry(params.id, session.user.id);
   if (!entry) {
-    return Response.json({ error: 'Запись не найдена' }, { status: 404 });
+    return Response.json({ error: t('errors.entryNotFound') }, { status: 404 });
   }
 
   const body = await parseBody(request, patchSchema);
@@ -183,7 +183,7 @@ export const PATCH = route<Params>(async ({ session, request, params }) => {
 
 /* ──────────────────────────── Удаление ─────────────────────────────── */
 
-export const DELETE = route<Params>(async ({ session, params }) => {
+export const DELETE = route<Params>(async ({ session, params, t }) => {
   const deleted = await db
     .delete(foodEntries)
     .where(
@@ -195,7 +195,7 @@ export const DELETE = route<Params>(async ({ session, params }) => {
     .returning({ id: foodEntries.id });
 
   if (deleted.length === 0) {
-    return Response.json({ error: 'Запись не найдена' }, { status: 404 });
+    return Response.json({ error: t('errors.entryNotFound') }, { status: 404 });
   }
 
   return Response.json({ ok: true });

@@ -5,11 +5,15 @@ import { env } from '@/env';
 import {
   validateInitData,
   extractInitData,
-  resolveLocale,
-  FAILURE_MESSAGES,
   type TelegramUser,
 } from './telegram/init-data';
+import { toLocale, translator } from '@/i18n/messages';
 
+/**
+ * Ошибка авторизации. В `message` лежит ключ словаря, а не готовая фраза:
+ * язык пользователя известен только после успешной проверки подписи,
+ * и перевод делает обвязка API.
+ */
 export class AuthError extends Error {
   constructor(
     message: string,
@@ -43,7 +47,7 @@ async function upsertUser(tgUser: TelegramUser): Promise<User> {
       firstName: tgUser.first_name ?? null,
       lastName: tgUser.last_name ?? null,
       photoUrl: tgUser.photo_url ?? null,
-      locale: resolveLocale(tgUser.language_code),
+      locale: toLocale(tgUser.language_code),
       lastSeenAt: now,
     })
     .onConflictDoUpdate({
@@ -53,6 +57,10 @@ async function upsertUser(tgUser: TelegramUser): Promise<User> {
         firstName: tgUser.first_name ?? null,
         lastName: tgUser.last_name ?? null,
         photoUrl: tgUser.photo_url ?? null,
+        // Язык обновляется на каждом входе: человек, переключивший клиент
+        // Telegram на казахский, ожидает казахский и от нас. Своего выбора
+        // языка в приложении нет, перетирать нечего.
+        locale: toLocale(tgUser.language_code),
         lastSeenAt: now,
         updatedAt: now,
       },
@@ -74,17 +82,17 @@ async function upsertUser(tgUser: TelegramUser): Promise<User> {
 export async function getSession(request: Request): Promise<Session> {
   const raw = extractInitData(request.headers.get('authorization'));
   if (!raw) {
-    throw new AuthError('Отсутствует авторизация Telegram');
+    throw new AuthError('errors.auth.missing');
   }
 
   const result = validateInitData(raw, env.TELEGRAM_BOT_TOKEN);
   if (!result.ok) {
-    throw new AuthError(FAILURE_MESSAGES[result.reason]);
+    throw new AuthError(`errors.auth.${result.reason}`);
   }
 
   const user = await upsertUser(result.data.user);
   if (user.isBlocked) {
-    throw new AuthError('Доступ заблокирован', 403);
+    throw new AuthError('errors.auth.blocked', 403);
   }
 
   const [profile] = await db
@@ -106,22 +114,24 @@ export async function requireProfile(
 ): Promise<Session & { profile: Profile }> {
   const session = await getSession(request);
   if (!session.profile) {
-    throw new AuthError('Сначала заполните физические данные', 428);
+    throw new AuthError('errors.needProfile', 428);
   }
   return session as Session & { profile: Profile };
 }
 
 /** Приводит любую ошибку к JSON-ответу, не раскрывая внутренностей */
 export function toErrorResponse(error: unknown): Response {
+  const t = translator('ru');
+
   if (error instanceof AuthError) {
-    return Response.json({ error: error.message }, { status: error.status });
+    return Response.json(
+      { error: t.has(error.message as 'errors.internal') ? t(error.message as 'errors.internal') : error.message },
+      { status: error.status },
+    );
   }
 
   console.error('Необработанная ошибка API:', error);
-  return Response.json(
-    { error: 'Внутренняя ошибка сервера' },
-    { status: 500 },
-  );
+  return Response.json({ error: t('errors.internal') }, { status: 500 });
 }
 
 /** Отдельная авторизация бота: сверяем секрет вебхука от Telegram */

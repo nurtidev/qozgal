@@ -13,40 +13,59 @@ import {
   localDate,
   localHour,
 } from '@/db/queries';
-import { formatEntrySummary, escapeHtml, WELCOME } from './format';
+import { formatEntrySummary, escapeHtml, welcome } from './format';
+import { translator, toLocale, type Locale } from '@/i18n/messages';
 import type { User } from '@/db/schema';
+
+/**
+ * Язык ответа.
+ *
+ * До обращения к базе он берётся из апдейта — тем же полем, по которому
+ * getOrCreateUser проставляет locale пользователю. Часть ответов (неверный
+ * тип файла, слишком большой файл) уходит раньше, чем мы вообще заводим
+ * человека в базе, и ждать ради этого запроса к Postgres незачем.
+ */
+function speak(source: { language_code?: string } | User | undefined) {
+  if (!source) return translator('ru');
+  const code =
+    'locale' in source ? source.locale : source.language_code;
+  return translator(toLocale(code));
+}
 
 export const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
 
 /* ──────────────────────────── Клавиатуры ───────────────────────────── */
 
-function appKeyboard(): InlineKeyboard {
+function appKeyboard(locale: Locale): InlineKeyboard {
   return new InlineKeyboard().webApp(
-    'Открыть приложение',
+    translator(locale)('bot.openApp'),
     clientEnv.NEXT_PUBLIC_APP_URL,
   );
 }
 
-function confirmKeyboard(entryId: string): InlineKeyboard {
+function confirmKeyboard(entryId: string, locale: Locale): InlineKeyboard {
+  const t = translator(locale);
   return new InlineKeyboard()
-    .text('✓ Сохранить', `confirm:${entryId}`)
-    .webApp('✏️ Поправить', `${clientEnv.NEXT_PUBLIC_APP_URL}/entry/${entryId}`)
+    .text(t('bot.save'), `confirm:${entryId}`)
+    .webApp(t('bot.edit'), `${clientEnv.NEXT_PUBLIC_APP_URL}/entry/${entryId}`)
     .row()
-    .text('✕ Отмена', `discard:${entryId}`);
+    .text(t('bot.cancel'), `discard:${entryId}`);
 }
 
 /* ──────────────────────────── Команды ──────────────────────────────── */
 
 bot.command('start', async (ctx) => {
-  await ctx.reply(WELCOME, {
+  const locale = toLocale(ctx.from?.language_code);
+  await ctx.reply(welcome(locale), {
     parse_mode: 'HTML',
-    reply_markup: appKeyboard(),
+    reply_markup: appKeyboard(locale),
   });
 });
 
 bot.command('app', async (ctx) => {
-  await ctx.reply('Дашборд, замеры и план питания:', {
-    reply_markup: appKeyboard(),
+  const locale = toLocale(ctx.from?.language_code);
+  await ctx.reply(translator(locale)('bot.appPrompt'), {
+    reply_markup: appKeyboard(locale),
   });
 });
 
@@ -54,6 +73,7 @@ bot.command('today', async (ctx) => {
   const user = await resolveUser(ctx);
   if (!user) return;
 
+  const t = speak(user);
   const date = localDate(user.timezone);
   const [totals, goal] = await Promise.all([
     getDayTotals(user.id, date),
@@ -61,17 +81,19 @@ bot.command('today', async (ctx) => {
   ]);
 
   if (totals.entryCount === 0) {
-    await ctx.reply(
-      'За сегодня записей пока нет. Пришлите фото блюда или опишите словами.',
-    );
+    await ctx.reply(t('bot.todayEmpty'));
     return;
   }
 
   const lines = [
-    `<b>Сегодня</b>`,
+    `<b>${t('bot.todayTitle')}</b>`,
     ``,
-    `Съедено: <b>${totals.kcal} ккал</b>`,
-    `Б ${totals.proteinG} · Ж ${totals.fatG} · У ${totals.carbsG}`,
+    `<b>${t('bot.todayEaten', { kcal: totals.kcal })}</b>`,
+    t('macros.short', {
+      protein: totals.proteinG,
+      fat: totals.fatG,
+      carbs: totals.carbsG,
+    }),
   ];
 
   if (goal) {
@@ -79,14 +101,17 @@ bot.command('today', async (ctx) => {
     lines.push('');
     lines.push(
       left >= 0
-        ? `Норма ${goal.kcalTarget} ккал · осталось ${left}`
-        : `Норма ${goal.kcalTarget} ккал · перебор ${Math.abs(left)}`,
+        ? t('bot.todayLeft', { target: goal.kcalTarget, left })
+        : t('bot.todayOver', {
+            target: goal.kcalTarget,
+            over: Math.abs(left),
+          }),
     );
   }
 
   await ctx.reply(lines.join('\n'), {
     parse_mode: 'HTML',
-    reply_markup: appKeyboard(),
+    reply_markup: appKeyboard(toLocale(user.locale)),
   });
 });
 
@@ -96,7 +121,8 @@ bot.on('message:photo', async (ctx) => {
   const user = await resolveUser(ctx);
   if (!user) return;
 
-  const status = await ctx.reply('Разбираю фотографию…');
+  const t = speak(user);
+  const status = await ctx.reply(t('bot.analyzingPhoto'));
 
   try {
     const photo = pickPhotoSize(ctx.message.photo);
@@ -104,7 +130,7 @@ bot.on('message:photo', async (ctx) => {
       await ctx.api.editMessageText(
         ctx.chat.id,
         status.message_id,
-        'Не удалось получить изображение, попробуйте ещё раз.',
+        t('bot.noImage'),
       );
       return;
     }
@@ -154,25 +180,22 @@ const MAX_DOCUMENT_BYTES = 3.5 * 1024 * 1024;
 bot.on('message:document', async (ctx) => {
   const doc = ctx.message.document;
   const mediaType = doc.mime_type ? IMAGE_MIME[doc.mime_type] : undefined;
+  const t = speak(ctx.from);
 
   if (!mediaType) {
-    await ctx.reply(
-      'Я понимаю фотографии и текстовые описания. Пришлите снимок блюда или напишите, что съели.',
-    );
+    await ctx.reply(t('bot.unsupported'));
     return;
   }
 
   if (doc.file_size && doc.file_size > MAX_DOCUMENT_BYTES) {
-    await ctx.reply(
-      'Файл слишком большой. Отправьте это же фото обычным способом — без пометки «без сжатия».',
-    );
+    await ctx.reply(t('bot.tooLarge'));
     return;
   }
 
   const user = await resolveUser(ctx);
   if (!user) return;
 
-  const status = await ctx.reply('Разбираю фотографию…');
+  const status = await ctx.reply(t('bot.analyzingPhoto'));
 
   try {
     const imageBase64 = await downloadPhoto(doc.file_id);
@@ -197,7 +220,7 @@ bot.on('message:text', async (ctx) => {
   const user = await resolveUser(ctx);
   if (!user) return;
 
-  const status = await ctx.reply('Считаю…');
+  const status = await ctx.reply(speak(user)('bot.analyzingText'));
 
   try {
     await handleRecognition(ctx, user, status.message_id, {
@@ -216,11 +239,12 @@ bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
   const user = await resolveUser(ctx);
   if (!user) return;
 
+  const t = speak(user);
   const entryId = ctx.match[1];
   const ok = await confirmEntry(entryId, user.id);
 
   if (!ok) {
-    await ctx.answerCallbackQuery({ text: 'Запись не найдена' });
+    await ctx.answerCallbackQuery({ text: t('bot.entryNotFound') });
     return;
   }
 
@@ -230,11 +254,13 @@ bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
     getActiveGoal(user.id),
   ]);
 
-  const tail = goal
-    ? `\n\nЗа день: ${totals.kcal} из ${goal.kcalTarget} ккал`
-    : `\n\nЗа день: ${totals.kcal} ккал`;
+  const tail =
+    '\n\n' +
+    (goal
+      ? t('bot.dayTotal', { kcal: totals.kcal, target: goal.kcalTarget })
+      : t('bot.dayTotalNoGoal', { kcal: totals.kcal }));
 
-  await ctx.answerCallbackQuery({ text: 'Сохранено' });
+  await ctx.answerCallbackQuery({ text: t('bot.saved') });
 
   // Разметку переносим через entities, а не через parse_mode.
   // message.text отдаёт текст уже без тегов, поэтому повторная отправка
@@ -243,7 +269,8 @@ bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
   // Хвост дописывается в конец, поэтому смещения существующих entities
   // остаются верными и переносятся как есть.
   const original = ctx.callbackQuery.message;
-  const text = (original && 'text' in original ? original.text : null) ?? 'Записано';
+  const text =
+    (original && 'text' in original ? original.text : null) ?? t('bot.recorded');
   const entities =
     original && 'entities' in original ? original.entities : undefined;
 
@@ -254,9 +281,10 @@ bot.callbackQuery(/^discard:(.+)$/, async (ctx) => {
   const user = await resolveUser(ctx);
   if (!user) return;
 
+  const t = speak(user);
   await discardEntry(ctx.match[1], user.id);
-  await ctx.answerCallbackQuery({ text: 'Отменено' });
-  await ctx.editMessageText('Запись отменена.');
+  await ctx.answerCallbackQuery({ text: t('bot.discarded') });
+  await ctx.editMessageText(t('bot.discardedText'));
 });
 
 /* ─────────────────────── Общая логика разбора ──────────────────────── */
@@ -286,7 +314,13 @@ async function handleRecognition(
   });
 
   if (!outcome.ok) {
-    await ctx.api.editMessageText(chatId, statusMessageId, outcome.message);
+    // Причина приходит кодом, текст берём из словаря: сообщение об ошибке
+    // на чужом языке — то же самое, что и ошибка без объяснения
+    await ctx.api.editMessageText(
+      chatId,
+      statusMessageId,
+      speak(user)(`bot.failure.${outcome.reason}`),
+    );
     return;
   }
 
@@ -317,11 +351,12 @@ async function handleRecognition(
     total,
     dayKcal: totals.kcal + total.kcal,
     dayTargetKcal: goal?.kcalTarget,
+    locale: toLocale(user.locale),
   });
 
   await ctx.api.editMessageText(chatId, statusMessageId, summary, {
     parse_mode: 'HTML',
-    reply_markup: confirmKeyboard(entryId),
+    reply_markup: confirmKeyboard(entryId, toLocale(user.locale)),
   });
 }
 
@@ -339,7 +374,7 @@ async function resolveUser(ctx: Context): Promise<User | null> {
   });
 
   if (user.isBlocked) {
-    await ctx.reply('Доступ к боту закрыт.');
+    await ctx.reply(speak(user)('bot.blocked'));
     return null;
   }
 
@@ -403,7 +438,7 @@ async function reportFailure(
     await ctx.api.editMessageText(
       ctx.chat!.id,
       statusMessageId,
-      'Не получилось разобрать. Попробуйте ещё раз через минуту.',
+      speak(ctx.from)('bot.failed'),
     );
   } catch {
     // Сообщение могли удалить, пока шёл разбор — это не повод падать

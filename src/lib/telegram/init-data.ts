@@ -166,19 +166,4 @@ export function extractInitData(header: string | null): string | null {
   return value.length > 0 ? value : null;
 }
 
-/** Понятное пользователю объяснение отказа */
-export const FAILURE_MESSAGES: Record<ValidationFailure, string> = {
-  missing_hash: 'Запрос не подписан Telegram',
-  bad_signature: 'Подпись Telegram недействительна',
-  expired: 'Сессия устарела, переоткройте приложение',
-  missing_user: 'Telegram не передал данные пользователя',
-  malformed_user: 'Данные пользователя повреждены',
-};
 
-/**
- * Определяет язык интерфейса по данным Telegram.
- * Поддерживаем русский и казахский; всё остальное — русский по умолчанию.
- */
-export function resolveLocale(languageCode?: string): 'ru' | 'kk' {
-  return languageCode?.toLowerCase().startsWith('kk') ? 'kk' : 'ru';
-}

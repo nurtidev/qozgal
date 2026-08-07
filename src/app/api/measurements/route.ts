@@ -24,10 +24,10 @@ const postSchema = z.object({
   calfCm: z.number().min(20).max(80).nullable().optional(),
 });
 
-export const POST = route(async ({ session, request }) => {
+export const POST = route(async ({ session, request, t }) => {
   const { user, profile } = session;
   if (!profile) {
-    throw new AuthError('Сначала заполните физические данные', 428);
+    throw new AuthError('errors.needProfile', 428);
   }
 
   const body = await parseBody(request, postSchema);
@@ -35,8 +35,8 @@ export const POST = route(async ({ session, request }) => {
   if (profile.sex === 'female' && (body.hipCm == null || body.hipCm <= 0)) {
     return Response.json(
       {
-        error: 'Нужен обхват бёдер',
-        fields: { hipCm: 'Для женщин обхват бёдер входит в формулу расчёта' },
+        error: t('errors.needHip'),
+        fields: { hipCm: t('errors.needHipField') },
       },
       { status: 422 },
     );
@@ -89,7 +89,7 @@ export const POST = route(async ({ session, request }) => {
     // честнее сказать «не посчитали», чем показать выдуманное число
     bodyFatNote:
       bodyFatPct === null
-        ? 'Не удалось рассчитать процент жира — проверьте обхваты шеи и талии'
+        ? t('errors.bodyFatFailed')
         : null,
   });
 });

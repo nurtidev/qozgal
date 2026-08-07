@@ -1,5 +1,6 @@
 import type { ResolvedItem, Nutrition } from '@/lib/nutrition/resolve';
 import type { Recognition } from '@/lib/ai/schemas';
+import { translator, type Locale } from '@/i18n/messages';
 
 /** Экранирование для parse_mode: HTML — в названиях блюд встречаются кавычки и & */
 export function escapeHtml(value: string): string {
@@ -9,12 +10,7 @@ export function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Завтрак',
-  lunch: 'Обед',
-  dinner: 'Ужин',
-  snack: 'Перекус',
-};
+type T = ReturnType<typeof translator>;
 
 /**
  * Метка достоверности позиции. Показывается только там, где есть о чём
@@ -27,13 +23,14 @@ function confidenceMark(item: ResolvedItem): string {
   return '';
 }
 
-function formatItem(resolved: ResolvedItem): string {
+function formatItem(resolved: ResolvedItem, t: T): string {
   const { item, nutrition, matchedBy } = resolved;
   const name = escapeHtml(item.nameRu);
   const mark = confidenceMark(resolved);
+  const grams = `${item.grams} ${t('common.g')}`;
 
   if (!nutrition) {
-    return `• ${name} — ${item.grams} г${mark}\n  <i>нет в справочнике, укажите калорийность вручную</i>`;
+    return `• ${name} — ${grams}${mark}\n  <i>${t('bot.noProduct')}</i>`;
   }
 
   // Блюдо собрано из ингредиентов, а не найдено готовой карточкой.
@@ -41,7 +38,7 @@ function formatItem(resolved: ResolvedItem): string {
   // числа по-прежнему из базы, но пропорции состава — оценка.
   const approx = matchedBy === 'derived' ? '≈' : '';
 
-  return `• ${name} — ${item.grams} г · <b>${approx}${nutrition.kcal} ккал</b>${mark}`;
+  return `• ${name} — ${grams} · <b>${approx}${nutrition.kcal} ${t('common.kcal')}</b>${mark}`;
 }
 
 export interface EntrySummaryInput {
@@ -51,37 +48,40 @@ export interface EntrySummaryInput {
   /** Сколько уже съедено за день, включая этот приём */
   dayKcal?: number;
   dayTargetKcal?: number;
+  /** Язык пользователя из его записи в базе */
+  locale?: Locale;
 }
 
 /** Карточка разбора, которую пользователь подтверждает или правит */
 export function formatEntrySummary(input: EntrySummaryInput): string {
   const { recognition, resolved, total, dayKcal, dayTargetKcal } = input;
+  const t = translator(input.locale ?? 'ru');
 
   const lines: string[] = [];
-  lines.push(`<b>${MEAL_LABELS[recognition.mealType] ?? 'Приём пищи'}</b>`);
+  lines.push(`<b>${t(MEAL_KEYS[recognition.mealType])}</b>`);
   lines.push('');
-  lines.push(...resolved.map(formatItem));
+  lines.push(...resolved.map((item) => formatItem(item, t)));
   lines.push('');
   lines.push(
-    `<b>Итого: ${total.kcal} ккал</b>\n` +
-      `Б ${total.proteinG} · Ж ${total.fatG} · У ${total.carbsG}`,
+    `<b>${t('bot.total', { kcal: total.kcal })}</b>\n` +
+      t('macros.short', {
+        protein: total.proteinG,
+        fat: total.fatG,
+        carbs: total.carbsG,
+      }),
   );
 
   const unmatched = resolved.filter((r) => !r.nutrition).length;
   if (unmatched > 0) {
     lines.push('');
-    lines.push(
-      `<i>Итог посчитан без ${unmatched} ${plural(unmatched, 'позиции', 'позиций', 'позиций')} — их нет в справочнике.</i>`,
-    );
+    lines.push(`<i>${t('bot.unmatched', { count: unmatched })}</i>`);
   }
 
   const derived = resolved.filter((r) => r.matchedBy === 'derived');
   if (derived.length > 0) {
     const names = derived.map((r) => escapeHtml(r.item.nameRu)).join(', ');
     lines.push('');
-    lines.push(
-      `<i>≈ ${names} — блюда нет в справочнике целиком, калорийность собрана по составу.</i>`,
-    );
+    lines.push(`<i>≈ ${t('bot.derived', { names })}</i>`);
   }
 
   const lowConfidence = resolved.filter(
@@ -91,11 +91,14 @@ export function formatEntrySummary(input: EntrySummaryInput): string {
     const reasons = lowConfidence
       .map((r) => r.item.uncertainty)
       .filter((u) => u.trim().length > 0);
+    // Пояснение модели приходит на языке промпта, то есть по-русски.
+    // Своя фраза честнее показывает язык интерфейса, но конкретика модели
+    // полезнее общего предупреждения — поэтому она в приоритете.
     lines.push('');
     lines.push(
       reasons.length > 0
         ? `<i>⚠️ ${escapeHtml(reasons[0])}</i>`
-        : '<i>⚠️ Вес оценён приблизительно — проверьте перед сохранением.</i>',
+        : `<i>⚠️ ${t('bot.lowConfidence')}</i>`,
     );
   }
 
@@ -109,36 +112,26 @@ export function formatEntrySummary(input: EntrySummaryInput): string {
     lines.push('');
     lines.push(
       left >= 0
-        ? `За день: ${dayKcal} из ${dayTargetKcal} ккал · осталось ${left}`
-        : `За день: ${dayKcal} из ${dayTargetKcal} ккал · перебор ${Math.abs(left)}`,
+        ? t('bot.dayLeft', { eaten: dayKcal, target: dayTargetKcal, left })
+        : t('bot.dayOver', {
+            eaten: dayKcal,
+            target: dayTargetKcal,
+            over: Math.abs(left),
+          }),
     );
   }
 
   return lines.join('\n');
 }
 
-/** Русское склонение после числительного */
-export function plural(
-  n: number,
-  one: string,
-  few: string,
-  many: string,
-): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
+const MEAL_KEYS = {
+  breakfast: 'meals.breakfast',
+  lunch: 'meals.lunch',
+  dinner: 'meals.dinner',
+  snack: 'meals.snack',
+} as const;
+
+/** Приветствие при /start — на языке клиента Telegram */
+export function welcome(locale: Locale): string {
+  return translator(locale)('bot.welcome');
 }
-
-export const WELCOME = `
-Привет! Я помогу вести дневник питания.
-
-<b>Как записать еду</b>
-Пришлите фотографию блюда или напишите словами — например, «две сосиски и гречка». Я разберу состав, оценю вес и посчитаю калории по справочнику.
-
-Оценку веса можно поправить перед сохранением: по фотографии точный вес не определить, и лучше исправить цифру, чем копить неточности.
-
-<b>Что в приложении</b>
-Дашборд за день, замеры тела, динамика веса и план питания — по кнопке ниже.
-`.trim();

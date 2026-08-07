@@ -2,11 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 
-import {
-  validateInitData,
-  extractInitData,
-  resolveLocale,
-} from './init-data';
+import { validateInitData, extractInitData } from './init-data';
+import { toLocale } from '@/i18n/messages';
 
 const BOT_TOKEN = '1234567890:AAFakeTokenForTestsOnly_NotARealBotToken';
 const OTHER_TOKEN = '9999999999:BBDifferentTokenEntirely_AlsoNotReal____';
@@ -226,13 +223,13 @@ describe('Заголовок Authorization', () => {
 
 describe('Определение языка', () => {
   test('казахский код языка даёт kk', () => {
-    assert.equal(resolveLocale('kk'), 'kk');
-    assert.equal(resolveLocale('kk-KZ'), 'kk');
+    assert.equal(toLocale('kk'), 'kk');
+    assert.equal(toLocale('kk-KZ'), 'kk');
   });
 
   test('остальные языки сводятся к русскому', () => {
-    assert.equal(resolveLocale('ru'), 'ru');
-    assert.equal(resolveLocale('en'), 'ru');
-    assert.equal(resolveLocale(undefined), 'ru');
+    assert.equal(toLocale('ru'), 'ru');
+    assert.equal(toLocale('en'), 'ru');
+    assert.equal(toLocale(undefined), 'ru');
   });
 });

@@ -31,6 +31,13 @@ const BOB: StubUser = {
   username: 'e2e_bob',
   language_code: 'ru',
 };
+/** Казахоязычный клиент — на нём проверяется язык ответов сервера */
+const KAIRAT: StubUser = {
+  id: 990_000_103,
+  first_name: 'Қайрат',
+  username: 'e2e_kairat',
+  language_code: 'kk',
+};
 
 /**
  * Дата рождения, дающая ровно N полных лет на сегодня.
@@ -266,6 +273,51 @@ describe('Дневник', () => {
   test('некорректная дата отвергается', async () => {
     const { status } = await call('/api/day?date=вчера', ALICE);
     assert.equal(status, 422);
+  });
+});
+
+describe('Язык ответов', () => {
+  test('ошибка валидации приходит по-казахски', async () => {
+    const { status, body } = await call('/api/onboarding', KAIRAT, {
+      method: 'POST',
+      body: JSON.stringify({
+        sex: 'male',
+        birthDate: birthDateForAge(30),
+        heightCm: 40,
+        weightKg: 80,
+        activityLevel: 'moderate',
+        goalType: 'lose',
+      }),
+    });
+
+    assert.equal(status, 422);
+    // Язык берётся из language_code подписи, а не из заголовков запроса
+    assert.equal(body.error, 'Деректер дұрыс емес');
+    assert.equal((body.fields as Record<string, string>).heightCm, 'Бой 100 см-ден төмен');
+  });
+
+  test('тому же запросу от русскоязычного отвечают по-русски', async () => {
+    const { body } = await call('/api/onboarding', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({
+        sex: 'male',
+        birthDate: birthDateForAge(30),
+        heightCm: 40,
+        weightKg: 80,
+        activityLevel: 'moderate',
+        goalType: 'lose',
+      }),
+    });
+
+    assert.equal(body.error, 'Некорректные данные');
+    assert.equal((body.fields as Record<string, string>).heightCm, 'Рост меньше 100 см');
+  });
+
+  test('ненайденная запись объясняется на языке пользователя', async () => {
+    const fakeId = '00000000-0000-4000-8000-000000000000';
+    const { status, body } = await call(`/api/entries/${fakeId}`, KAIRAT);
+    assert.equal(status, 404);
+    assert.equal(body.error, 'Жазба табылмады');
   });
 });
 
