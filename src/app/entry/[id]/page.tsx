@@ -117,6 +117,7 @@ export default function EntryPage() {
   const [removed, setRemoved] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [armed, setArmed] = useState(false);
+  const [repeating, setRepeating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
 
@@ -243,6 +244,32 @@ export default function EntryPage() {
     }
   }
 
+  /**
+   * Повтор в сегодняшний день.
+   *
+   * Тот же завтрак пять дней в неделю — обычное дело, и фотографировать его
+   * каждый раз незачем: числа уже проверены. После повтора открываем новую
+   * запись, чтобы граммовку можно было тут же поправить.
+   */
+  async function repeat() {
+    if (!entry) return;
+    setRepeating(true);
+    setError(null);
+
+    try {
+      const created = await api<{ id: string }>('/api/entries', {
+        method: 'POST',
+        body: JSON.stringify({ repeatOf: entry.id }),
+      });
+      haptic('success');
+      router.replace(`/entry/${created.id}`);
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof ApiError ? e.message : t('repeatFailed'));
+      setRepeating(false);
+    }
+  }
+
   async function remove() {
     if (!entry) return;
     setSaving(true);
@@ -363,6 +390,14 @@ export default function EntryPage() {
         >
           {primaryLabel}
         </Button>
+
+        {/* Повторять есть смысл только то, что уже посчитано: у черновика
+            цифры ещё не подтверждены, а у пустой записи копировать нечего */}
+        {!empty && entry.status === 'confirmed' && (
+          <Button variant="ghost" onClick={repeat} loading={repeating}>
+            {t('repeat')}
+          </Button>
+        )}
 
         <Button variant="ghost" onClick={leave}>
           {tc('back')}

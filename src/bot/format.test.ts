@@ -72,6 +72,34 @@ describe('Карточка разбора', () => {
     assert.doesNotMatch(text, /Итого|Обед/);
   });
 
+  test('казахское название берётся из справочника, а не у модели', () => {
+    // Модель отвечает по-русски всегда: язык промпта один
+    const matched: ResolvedItem = {
+      ...withNutrition,
+      product: {
+        nameKk: 'Қуырдақ',
+      } as unknown as ResolvedItem['product'],
+    };
+    const text = formatEntrySummary({
+      recognition,
+      resolved: [matched],
+      total,
+      locale: 'kk',
+    });
+    assert.match(text, /Қуырдақ/);
+    assert.doesNotMatch(text, /Куырдак/);
+  });
+
+  test('без казахского имени в карточке остаётся формулировка модели', () => {
+    const text = formatEntrySummary({
+      recognition,
+      resolved: [withNutrition],
+      total,
+      locale: 'kk',
+    });
+    assert.match(text, /Куырдак/);
+  });
+
   test('позиция без нутриентов не выглядит нулевой', () => {
     const text = formatEntrySummary({
       recognition,

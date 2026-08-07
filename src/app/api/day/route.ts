@@ -4,6 +4,7 @@ import { route, dateSchema } from '@/lib/api';
 import { db } from '@/db';
 import { foodEntries } from '@/db/schema';
 import { getDayTotals, getActiveGoal, localDate } from '@/db/queries';
+import { toLocale } from '@/i18n/messages';
 
 /**
  * Дневник за сутки: приёмы пищи с составом, итог и норма.
@@ -19,6 +20,8 @@ export const GET = route(async ({ session, request }) => {
   const raw = url.searchParams.get('date');
   const date = raw ? dateSchema.parse(raw) : localDate(user.timezone);
 
+  const locale = toLocale(user.locale);
+
   const [entries, totals, goal] = await Promise.all([
     db.query.foodEntries.findMany({
       where: and(
@@ -28,6 +31,9 @@ export const GET = route(async ({ session, request }) => {
       with: {
         items: {
           orderBy: (items, { asc: ascend }) => [ascend(items.sortOrder)],
+          // Карточка справочника нужна ради казахского названия: в снапшоте
+          // лежит то, как позицию назвала модель, а она отвечает по-русски
+          with: { product: true },
         },
       },
       orderBy: [asc(foodEntries.consumedAt)],
@@ -49,7 +55,7 @@ export const GET = route(async ({ session, request }) => {
       photoRef: entry.photoUrl,
       items: entry.items.map((item) => ({
         id: item.id,
-        name: item.nameRaw,
+        name: localName(item.nameRaw, item.product?.nameKk ?? null, locale),
         grams: item.grams,
         kcal: item.kcal,
         proteinG: item.proteinG,
@@ -74,3 +80,18 @@ export const GET = route(async ({ session, request }) => {
       : null,
   });
 });
+
+/**
+ * Название позиции на языке пользователя.
+ *
+ * Снапшот записи хранит формулировку модели, а она отвечает по-русски.
+ * У карточек местной кухни есть казахское имя — берём его, когда оно есть:
+ * «Бесбармақ» в казахском интерфейсе уместнее «Бешбармака».
+ */
+function localName(
+  raw: string,
+  nameKk: string | null,
+  locale: 'ru' | 'kk',
+): string {
+  return locale === 'kk' && nameKk ? nameKk : raw;
+}

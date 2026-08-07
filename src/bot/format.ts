@@ -23,9 +23,13 @@ function confidenceMark(item: ResolvedItem): string {
   return '';
 }
 
-function formatItem(resolved: ResolvedItem, t: T): string {
-  const { item, nutrition, matchedBy } = resolved;
-  const name = escapeHtml(item.nameRu);
+function formatItem(resolved: ResolvedItem, t: T, locale: Locale): string {
+  const { item, nutrition, matchedBy, product } = resolved;
+  // Модель отвечает по-русски: язык промпта один. Если позиция нашлась
+  // в справочнике и у карточки есть казахское имя, показываем его
+  const name = escapeHtml(
+    locale === 'kk' && product?.nameKk ? product.nameKk : item.nameRu,
+  );
   const mark = confidenceMark(resolved);
   const grams = `${item.grams} ${t('common.g')}`;
 
@@ -55,12 +59,13 @@ export interface EntrySummaryInput {
 /** Карточка разбора, которую пользователь подтверждает или правит */
 export function formatEntrySummary(input: EntrySummaryInput): string {
   const { recognition, resolved, total, dayKcal, dayTargetKcal } = input;
-  const t = translator(input.locale ?? 'ru');
+  const locale = input.locale ?? 'ru';
+  const t = translator(locale);
 
   const lines: string[] = [];
   lines.push(`<b>${t(MEAL_KEYS[recognition.mealType])}</b>`);
   lines.push('');
-  lines.push(...resolved.map((item) => formatItem(item, t)));
+  lines.push(...resolved.map((item) => formatItem(item, t, locale)));
   lines.push('');
   lines.push(
     `<b>${t('bot.total', { kcal: total.kcal })}</b>\n` +

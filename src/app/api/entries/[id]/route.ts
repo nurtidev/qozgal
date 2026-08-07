@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { foodEntries, foodItems, products } from '@/db/schema';
 import { scaleToPortion } from '@/lib/nutrition/resolve';
 import { clearInlineKeyboard } from '@/lib/telegram/bot-api';
+import { toLocale } from '@/i18n/messages';
 
 type Params = { id: string };
 
@@ -34,10 +35,15 @@ export const GET = route<Params>(async ({ session, params, t }) => {
   }
 
   const items = await db
-    .select()
+    .select({ item: foodItems, productNameKk: products.nameKk })
     .from(foodItems)
+    // Карточка справочника нужна ради казахского названия: в снапшоте лежит
+    // формулировка модели, а она отвечает по-русски
+    .leftJoin(products, eq(products.id, foodItems.productId))
     .where(eq(foodItems.entryId, entry.id))
     .orderBy(foodItems.sortOrder);
+
+  const locale = toLocale(session.user.locale);
 
   return Response.json({
     id: entry.id,
@@ -46,9 +52,9 @@ export const GET = route<Params>(async ({ session, params, t }) => {
     source: entry.source,
     consumedAt: entry.consumedAt,
     consumedOn: entry.consumedOn,
-    items: items.map((i) => ({
+    items: items.map(({ item: i, productNameKk }) => ({
       id: i.id,
-      name: i.nameRaw,
+      name: locale === 'kk' && productNameKk ? productNameKk : i.nameRaw,
       grams: i.grams,
       kcal: i.kcal,
       proteinG: i.proteinG,

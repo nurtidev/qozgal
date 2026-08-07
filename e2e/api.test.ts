@@ -316,6 +316,26 @@ describe('Справочник продуктов', () => {
   });
 });
 
+describe('Повтор приёма пищи', () => {
+  test('повторить чужую запись нельзя', async () => {
+    const fakeId = '00000000-0000-4000-8000-000000000000';
+    const { status } = await call('/api/entries', BOB, {
+      method: 'POST',
+      body: JSON.stringify({ repeatOf: fakeId }),
+    });
+    assert.equal(status, 404);
+  });
+
+  test('без идентификатора записи повтор отвергается', async () => {
+    const { status, body } = await call('/api/entries', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    assert.equal(status, 422);
+    assert.ok((body.fields as Record<string, string>).repeatOf);
+  });
+});
+
 describe('Язык ответов', () => {
   test('ошибка валидации приходит по-казахски', async () => {
     const { status, body } = await call('/api/onboarding', KAIRAT, {
