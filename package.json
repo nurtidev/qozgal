@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
     "bench:photo": "tsx src/bench.ts",
-    "bench:text": "tsx src/bench-text.ts"
+    "bench:text": "tsx src/bench-text.ts",
+    "shot": "tsx e2e/shot.ts"
   },
   "overrides": {
     "valibot": "^1.4.2",
@@ -37,6 +38,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
