@@ -1,9 +1,10 @@
-import { or, sql } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 
 import { route } from '@/lib/api';
 import { db } from '@/db';
-import { exercises } from '@/db/schema';
+import { exercises, injuries } from '@/db/schema';
 import { toLocale } from '@/i18n/messages';
+import { conflictsFor } from '@/lib/health/injury';
 
 /**
  * Справочник упражнений для выбора при записи подхода.
@@ -16,6 +17,16 @@ export const GET = route(async ({ session, request }) => {
   const url = new URL(request.url);
   const query = (url.searchParams.get('q') ?? '').trim().toLowerCase();
   const locale = toLocale(session.user.locale);
+
+  // Активные травмы — по ним упражнения помечаются предупреждением.
+  // Сопоставление детерминированное, по разметке справочника: модель
+  // не решает, что человеку безопасно.
+  const active = await db
+    .select({ area: injuries.area, severity: injuries.severity })
+    .from(injuries)
+    .where(
+      and(eq(injuries.userId, session.user.id), isNull(injuries.resolvedOn)),
+    );
 
   const rows = await db
     .select()
@@ -38,6 +49,8 @@ export const GET = route(async ({ session, request }) => {
       name: (locale === 'kk' ? e.nameKk : e.nameRu) ?? e.nameRu,
       muscleGroup: e.muscleGroup,
       equipment: e.equipment,
+      /** Задетые травмы: пустой список — пересечений с ними нет */
+      conflicts: conflictsFor(e.loadsAreas, active),
     })),
   });
 });

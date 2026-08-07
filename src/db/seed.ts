@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { db } from './index';
 import { products, exercises } from './schema';
 import { KAZAKH_FOODS } from './seed-data/kazakh-foods';
@@ -61,13 +62,24 @@ async function seedExercises() {
   const known = new Set(existing.map((e) => e.nameRu));
   const missing = EXERCISES.filter((e) => !known.has(e.nameRu));
 
-  if (missing.length === 0) {
-    console.log(`Упражнения: ${known.size} на месте, добавлять нечего.`);
-    return;
+  if (missing.length > 0) {
+    await db.insert(exercises).values(missing);
   }
 
-  await db.insert(exercises).values(missing);
-  console.log(`Упражнения: добавлено ${missing.length}, всего ${known.size + missing.length}.`);
+  // Разметка нагружаемых областей обновляется у всех, а не только у новых:
+  // это справочные данные, и правка в файле должна доезжать до базы. Правка
+  // тут напрямую влияет на предупреждения о травмах — устаревшая разметка
+  // означала бы, что человеку не сказали про опасное движение.
+  for (const exercise of EXERCISES) {
+    await db
+      .update(exercises)
+      .set({ loadsAreas: exercise.loadsAreas ?? [], metValue: exercise.metValue })
+      .where(eq(exercises.nameRu, exercise.nameRu));
+  }
+
+  console.log(
+    `Упражнения: добавлено ${missing.length}, всего ${known.size + missing.length}, разметка обновлена.`,
+  );
 }
 
 seed()

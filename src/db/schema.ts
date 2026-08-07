@@ -38,6 +38,34 @@ export const bodyTypeEnum = pgEnum('body_type', [
 
 export const goalTypeEnum = pgEnum('goal_type', ['lose', 'maintain', 'gain']);
 
+/**
+ * Области тела для учёта травм и ограничений.
+ *
+ * Список крупный намеренно: он нужен не для диагноза, а чтобы связать
+ * жалобу с движениями, которые эту область нагружают. Дробить до «медиальный
+ * мениск» бессмысленно — упражнения всё равно размечены по крупной области.
+ */
+export const bodyAreaEnum = pgEnum('body_area', [
+  'lower_back', // поясница
+  'neck', // шея
+  'shoulder', // плечо
+  'elbow', // локоть
+  'wrist', // запястье
+  'hip', // тазобедренный
+  'knee', // колено
+  'ankle', // голеностоп
+]);
+
+/**
+ * Насколько травма ограничивает. Влияет на то, насколько настойчиво
+ * приложение предупреждает, но не на право человека решать самому.
+ */
+export const injurySeverityEnum = pgEnum('injury_severity', [
+  'watch', // беспокоит
+  'pain', // болит
+  'medical', // врач запретил нагрузку
+]);
+
 export const mealTypeEnum = pgEnum('meal_type', [
   'breakfast',
   'lunch',
@@ -473,7 +501,51 @@ export const exercises = pgTable('exercises', {
   equipment: text('equipment'),
   /** Расход энергии, MET — для оценки калорий тренировки */
   metValue: real('met_value'),
+  /**
+   * Какие области тела нагружает движение — по ним упражнение сопоставляется
+   * с травмами пользователя.
+   *
+   * Отдельно от группы мышц, потому что это разные вещи: поясницу нагружают
+   * и становая тяга (спина), и приседания (ноги), и гиперэкстензия, и тяга
+   * в наклоне — движения из двух групп, объединённые не мышцей, а тем, что
+   * на них ложится.
+   *
+   * Значения из bodyAreaEnum, но колонка текстовая: массив перечислений
+   * в миграциях ведёт себя хуже, чем стоит того типизация справочника,
+   * который правится руками и проверяется тестом.
+   */
+  loadsAreas: text('loads_areas').array(),
 });
+
+/**
+ * Травмы и ограничения.
+ *
+ * Приложение не ставит диагнозов и не разрешает нагрузку — оно связывает
+ * жалобу с движениями, которые эту область нагружают, и предупреждает.
+ * Решение остаётся за человеком и его врачом.
+ *
+ * Закрытая травма не удаляется: вернувшаяся боль в том же месте — это
+ * важный факт, а не новая запись с чистого листа.
+ */
+export const injuries = pgTable(
+  'injuries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    area: bodyAreaEnum('area').notNull(),
+    severity: injurySeverityEnum('severity').notNull().default('pain'),
+    startedOn: date('started_on').notNull(),
+    /** Заполнено — травма закрыта и на подбор упражнений больше не влияет */
+    resolvedOn: date('resolved_on'),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('injuries_user_active_idx').on(t.userId, t.resolvedOn)],
+);
 
 export const workoutSessions = pgTable(
   'workout_sessions',
@@ -583,6 +655,10 @@ export const workoutSessionsRelations = relations(
     sets: many(workoutSets),
   }),
 );
+
+export const injuriesRelations = relations(injuries, ({ one }) => ({
+  user: one(users, { fields: [injuries.userId], references: [users.id] }),
+}));
 
 export const workoutSetsRelations = relations(workoutSets, ({ one }) => ({
   session: one(workoutSessions, {

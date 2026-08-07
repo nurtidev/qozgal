@@ -44,11 +44,18 @@ interface Workout {
   sets: WorkoutSet[];
 }
 
+interface Conflict {
+  area: string;
+  severity: 'watch' | 'pain' | 'medical';
+}
+
 interface Exercise {
   id: string;
   name: string;
   muscleGroup: string;
   equipment: string | null;
+  /** Задетые травмы: непустой список — упражнение нагружает больное место */
+  conflicts: Conflict[];
 }
 
 const GROUPS = ['legs', 'chest', 'back', 'shoulders', 'arms', 'core', 'cardio'];
@@ -58,6 +65,7 @@ export default function WorkoutPage() {
   const { id: workoutId } = useParams<{ id: string }>();
   const t = useTranslations('workouts');
   const tc = useTranslations('common');
+  const ti = useTranslations('injuries');
   const dates = useDates();
 
   useTelegramApp();
@@ -335,33 +343,69 @@ export default function WorkoutPage() {
           </>
         ) : picking && exercises ? (
           <ul className="flex max-h-96 flex-col overflow-y-auto">
+            {/* Предупреждение стоит над списком: человек должен понимать
+                правило до того, как увидит пометки на упражнениях */}
+            {exercises.some((e) => e.conflicts.length > 0) && (
+              <li className="pb-2">
+                <Hint>{ti('pickerWarning')}</Hint>
+              </li>
+            )}
             {GROUPS.map((group) => {
-              const inGroup = exercises.filter((e) => e.muscleGroup === group);
+              // Задевающие травму уходят вниз своей группы, но остаются
+              // видимыми: запрет вместо предупреждения человек обойдёт
+              // мимо приложения — вместе со всем остальным учётом
+              const inGroup = exercises
+                .filter((e) => e.muscleGroup === group)
+                .sort((a, b) => a.conflicts.length - b.conflicts.length);
               if (inGroup.length === 0) return null;
               return (
                 <li key={group}>
                   <span className="block px-1 pt-3 pb-1 text-xs text-[var(--tg-theme-hint-color)]">
                     {t(`groups.${group}` as 'groups.legs')}
                   </span>
-                  {inGroup.map((exercise) => (
-                    <button
-                      key={exercise.id}
-                      type="button"
-                      onClick={() => {
-                        haptic('select');
-                        setChosen(exercise);
-                        setPicking(false);
-                      }}
-                      className="flex min-h-12 w-full items-center justify-between gap-2 border-b border-[var(--tg-theme-bg-color)] text-left last:border-0"
-                    >
-                      <span>{exercise.name}</span>
-                      {exercise.equipment && (
-                        <span className="shrink-0 text-xs text-[var(--tg-theme-hint-color)]">
-                          {exercise.equipment}
+                  {inGroup.map((exercise) => {
+                    const medical = exercise.conflicts.some(
+                      (c) => c.severity === 'medical',
+                    );
+                    const areas = exercise.conflicts
+                      .map((c) => ti(`areas.${c.area}` as 'areas.knee'))
+                      .join(', ');
+
+                    return (
+                      <button
+                        key={exercise.id}
+                        type="button"
+                        onClick={() => {
+                          haptic('select');
+                          setChosen(exercise);
+                          setPicking(false);
+                        }}
+                        className="flex min-h-12 w-full items-center justify-between gap-2 border-b border-[var(--tg-theme-bg-color)] py-1.5 text-left last:border-0"
+                      >
+                        <span className="flex flex-col">
+                          <span>{exercise.name}</span>
+                          {exercise.conflicts.length > 0 && (
+                            <span
+                              className={`text-xs leading-tight ${
+                                medical
+                                  ? 'text-[var(--tg-theme-destructive-text-color)]'
+                                  : 'text-[var(--tg-theme-hint-color)]'
+                              }`}
+                            >
+                              {medical
+                                ? ti('loadsMedical', { areas })
+                                : ti('loads', { areas })}
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </button>
-                  ))}
+                        {exercise.equipment && (
+                          <span className="shrink-0 text-xs text-[var(--tg-theme-hint-color)]">
+                            {exercise.equipment}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </li>
               );
             })}

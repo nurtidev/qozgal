@@ -392,6 +392,65 @@ describe('Тренировки', () => {
   });
 });
 
+describe('Травмы и ограничения', () => {
+  test('травма заводится и помечает упражнения', async () => {
+    const created = await call('/api/injuries', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ area: 'lower_back', severity: 'pain' }),
+    });
+    assert.equal(created.status, 200);
+    const id = created.body.id as string;
+
+    const list = await call('/api/exercises', ALICE);
+    const found = list.body.exercises as {
+      name: string;
+      conflicts: { area: string; severity: string }[];
+    }[];
+
+    const deadlift = found.find((e) => /Становая/.test(e.name));
+    assert.ok(deadlift, 'становая тяга должна быть в справочнике');
+    assert.deepEqual(deadlift.conflicts, [
+      { area: 'lower_back', severity: 'pain' },
+    ]);
+
+    // Махи в стороны поясницу не нагружают — помечать их нечем
+    const raise = found.find((e) => /Махи в стороны/.test(e.name));
+    assert.deepEqual(raise?.conflicts, []);
+
+    // Закрытая травма на подбор больше не влияет
+    const resolved = await call(`/api/injuries/${id}`, ALICE, {
+      method: 'PATCH',
+      body: JSON.stringify({ resolve: true }),
+    });
+    assert.equal(resolved.status, 200);
+
+    const after = await call('/api/exercises', ALICE);
+    const stillMarked = (after.body.exercises as { conflicts: unknown[] }[]).filter(
+      (e) => e.conflicts.length > 0,
+    );
+    assert.deepEqual(stillMarked, []);
+
+    await call(`/api/injuries/${id}`, ALICE, { method: 'DELETE' });
+  });
+
+  test('чужую травму не поправить', async () => {
+    const fakeId = '00000000-0000-4000-8000-000000000000';
+    const { status } = await call(`/api/injuries/${fakeId}`, BOB, {
+      method: 'PATCH',
+      body: JSON.stringify({ resolve: true }),
+    });
+    assert.equal(status, 404);
+  });
+
+  test('неизвестная область тела отвергается', async () => {
+    const { status } = await call('/api/injuries', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ area: 'soul' }),
+    });
+    assert.equal(status, 422);
+  });
+});
+
 describe('Язык ответов', () => {
   test('ошибка валидации приходит по-казахски', async () => {
     const { status, body } = await call('/api/onboarding', KAIRAT, {

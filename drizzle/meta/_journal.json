@@ -15,6 +15,13 @@
       "when": 1786119513059,
       "tag": "0001_bitter_vin_gonzales",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786127151848,
+      "tag": "0002_steady_union_jack",
+      "breakpoints": true
     }
   ]
 }
