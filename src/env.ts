@@ -5,18 +5,29 @@ import { z } from 'zod';
  * первого обращения: лучше упасть на деплое, чем отдать пользователю 500
  * посреди разбора фотографии.
  */
+/**
+ * Необязательная переменная.
+ *
+ * Пустая строка в .env означает «не задано», а не «задано пустым»: в шаблоне
+ * такие ключи стоят как `KEY=`, и без этой обработки наполовину заполненный
+ * .env падал бы с невнятной жалобой на длину значения вместо того, чтобы
+ * просто считать переменную отсутствующей.
+ */
+const optional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 const serverSchema = z.object({
   DATABASE_URL: z.string().url(),
 
   /** Токен бота от @BotFather. Им же подписывается initData Mini App. */
   TELEGRAM_BOT_TOKEN: z.string().min(20),
   /** Секрет для заголовка X-Telegram-Bot-Api-Secret-Token на вебхуке */
-  TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),
+  TELEGRAM_WEBHOOK_SECRET: optional(z.string().min(16)),
 
   ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),
 
   /** Ключ USDA FoodData Central; при отсутствии остаётся только локальный справочник */
-  USDA_API_KEY: z.string().optional(),
+  USDA_API_KEY: optional(z.string().min(1)),
 
   // Своего хранилища фотографий нет намеренно. Снимок нужен ровно один раз —
   // на распознавание, дальше ценность несут разобранные позиции. В базе лежит
