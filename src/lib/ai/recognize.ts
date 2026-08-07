@@ -15,14 +15,22 @@ import {
 const MODEL = 'claude-opus-5';
 
 /**
- * Распознавание — интерактивный путь: пользователь ждёт ответа в чате,
- * поэтому важна задержка. Задача при этом узкая — извлечь состав из одного
- * изображения, а не вести многошаговое рассуждение. На Opus 5 средний
- * уровень усилий на такой работе даёт качество, близкое к максимальному,
- * при заметно меньшей задержке и цене. Если разбор сложных блюд окажется
- * неточным, поднимайте до 'high' и сравнивайте на своей выборке.
+ * Уровень усилий модели — главная ручка компромисса «качество / задержка / цена».
+ *
+ * Распознавание идёт в интерактивном пути: пользователь ждёт ответа в чате.
+ * Задача при этом узкая — извлечь состав из одного изображения, а не вести
+ * многошаговое рассуждение, и на Opus 5 средний уровень даёт качество,
+ * близкое к максимальному, заметно дешевле и быстрее.
+ *
+ * Вынесено в переменную окружения, чтобы сравнивать варианты на своей
+ * выборке блюд, не трогая код.
  */
-const EFFORT = 'medium' as const;
+const EFFORT = (process.env.RECOGNITION_EFFORT ?? 'medium') as
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
 
 /**
  * Потолок вывода. Учитывает и рассуждение модели, и сам JSON: на Opus 5
@@ -59,6 +67,7 @@ interface RawCallResult {
     input_tokens: number;
     output_tokens: number;
     cache_read_input_tokens?: number | null;
+    cache_creation_input_tokens?: number | null;
   };
 }
 
@@ -197,6 +206,7 @@ export async function recognizeFood(
       inputTokens: result.usage.input_tokens,
       outputTokens: result.usage.output_tokens,
       cacheReadTokens: result.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: result.usage.cache_creation_input_tokens ?? 0,
     },
   };
 }

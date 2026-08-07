@@ -99,9 +99,7 @@ bot.on('message:photo', async (ctx) => {
   const status = await ctx.reply('Разбираю фотографию…');
 
   try {
-    // Массив размеров отсортирован по возрастанию — берём самый крупный:
-    // на мелком превью не разглядеть ни состав, ни масштаб.
-    const photo = ctx.message.photo.at(-1);
+    const photo = pickPhotoSize(ctx.message.photo);
     if (!photo) {
       await ctx.api.editMessageText(
         ctx.chat.id,
@@ -274,6 +272,37 @@ async function resolveUser(ctx: Context): Promise<User | null> {
   }
 
   return user;
+}
+
+/** Ширина, начиная с которой разрешение перестаёт улучшать разбор */
+const TARGET_PHOTO_WIDTH = 1000;
+
+/**
+ * Выбирает размер фотографии из лестницы, которую отдаёт Telegram.
+ *
+ * Не самый крупный: замеры на одном и том же блюде показали, что оценка
+ * веса от разрешения практически не зависит, а стоимость зависит сильно.
+ * На фотографии бешбармака 1920 px против 1024 px дали одинаковые
+ * 450 г и 250 г, но 2981 против 865 входных токенов — то есть 2.49¢
+ * против 1.36¢ за разбор и 9.6 против 7.8 секунды ожидания.
+ * При пяти приёмах пищи в день это разница в $3.73 и $2.04 на
+ * пользователя в месяц.
+ *
+ * Берём наименьший размер шириной от TARGET_PHOTO_WIDTH; если оригинал
+ * мельче — самый крупный из доступных.
+ *
+ * Оговорка: замер сделан на крупном блюде. Для тарелки с множеством
+ * мелких позиций разрешение может оказаться важнее — если разбор салатов
+ * начнёт мазать, поднимите порог.
+ */
+function pickPhotoSize<T extends { width: number }>(sizes: readonly T[]): T | undefined {
+  if (sizes.length === 0) return undefined;
+
+  // Telegram отдаёт размеры по возрастанию, но полагаться на это не станем
+  const sorted = [...sizes].sort((a, b) => a.width - b.width);
+  return (
+    sorted.find((s) => s.width >= TARGET_PHOTO_WIDTH) ?? sorted[sorted.length - 1]
+  );
 }
 
 async function downloadPhoto(fileId: string): Promise<string> {

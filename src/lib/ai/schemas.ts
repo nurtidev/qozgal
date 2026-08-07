@@ -76,9 +76,17 @@ export type RecognitionFailure =
 export interface RecognitionMeta {
   model: string;
   latencyMs: number;
+  /** Токены, обработанные по полной цене (изображение и переменная часть) */
   inputTokens: number;
   outputTokens: number;
+  /** Прочитано из кеша — стоит 0.1× от входной цены */
   cacheReadTokens: number;
+  /**
+   * Записано в кеш — стоит 1.25× от входной цены. Без этого поля учёт
+   * занижает стоимость: системный промпт при холодном кеше оплачивается
+   * с наценкой, а не бесплатно.
+   */
+  cacheWriteTokens: number;
 }
 
 export const FAILURE_MESSAGES: Record<RecognitionFailure, string> = {
