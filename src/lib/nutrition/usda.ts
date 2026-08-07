@@ -29,6 +29,9 @@ const NUTRIENT_IDS = {
  */
 const DATA_TYPES = ['Foundation', 'SR Legacy', 'Survey (FNDDS)'] as const;
 
+/** Те же наборы без Survey (FNDDS): на них шлюз USDA не спотыкается */
+const RELIABLE_DATA_TYPES = ['Foundation', 'SR Legacy'] as const;
+
 interface UsdaNutrient {
   nutrientId: number;
   value: number;
@@ -100,38 +103,79 @@ export async function searchUsda(
 
   const { limit = 5, signal } = options;
 
-  const url = new URL(`${BASE_URL}/foods/search`);
-  url.searchParams.set('api_key', apiKey);
-  url.searchParams.set('query', query);
-  url.searchParams.set('pageSize', String(limit));
-  url.searchParams.set('dataType', DATA_TYPES.join(','));
+  /**
+   * Порядок попыток: сначала все наборы, потом — без Survey (FNDDS).
+   *
+   * Шлюз USDA отбивает нгинксовым 400 часть запросов, где в dataType стоит
+   * «Survey (FNDDS)» — значение со скобками и пробелом. В замере: 16 из 16
+   * запросов без этого набора прошли, а с ним отказывала примерно треть,
+   * причём отказы шли пачками — похоже на один сломанный узел за
+   * балансировщиком. Дело не в темпе: паузы между запросами картину
+   * не меняли.
+   *
+   * Поэтому не слепые повторы, а деградация: при отказе спрашиваем те же
+   * данные без проблемного набора. Полный запрос идёт первым, потому что
+   * FNDDS — это готовые блюда, и для распознавания тарелки они часто
+   * оказываются лучшим совпадением, чем сырые ингредиенты.
+   *
+   * Молча вернуть пустоту нельзя: позиция осталась бы без нутриентов,
+   * и человек увидел бы «нет данных» там, где данные есть.
+   */
+  const attempts: readonly (readonly string[])[] = [
+    DATA_TYPES,
+    RELIABLE_DATA_TYPES,
+    RELIABLE_DATA_TYPES,
+  ];
 
-  try {
-    const response = await fetch(url, {
-      signal: signal ?? AbortSignal.timeout(8000),
-      // Справочник меняется редко — кешируем на сутки, чтобы не тратить
-      // квоту API на повторные запросы одного и того же продукта.
-      next: { revalidate: 86_400 },
-    });
+  for (let attempt = 0; attempt < attempts.length; attempt++) {
+    const url = new URL(`${BASE_URL}/foods/search`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('query', query);
+    url.searchParams.set('pageSize', String(limit));
+    url.searchParams.set('dataType', attempts[attempt].join(','));
 
-    if (!response.ok) {
-      console.warn(`USDA вернул ${response.status} на запрос "${query}"`);
-      return [];
+    try {
+      const response = await fetch(url, {
+        signal: signal ?? AbortSignal.timeout(8000),
+        // Справочник меняется редко — кешируем на сутки, чтобы не тратить
+        // квоту API на повторные запросы одного и того же продукта.
+        next: { revalidate: 86_400 },
+      });
+
+      if (response.ok) {
+        if (attempt > 0) {
+          console.warn(
+            `USDA: "${query}" получен без набора Survey (FNDDS) с попытки ${attempt + 1}`,
+          );
+        }
+        const data = (await response.json()) as UsdaSearchResponse;
+        return (data.foods ?? [])
+          .map(toProduct)
+          .filter((p): p is NewProduct => p !== null);
+      }
+
+      if (attempt === attempts.length - 1) {
+        console.warn(
+          `USDA вернул ${response.status} на запрос "${query}" — сдались после ${attempts.length} попыток`,
+        );
+        return [];
+      }
+    } catch (error) {
+      // Недоступность внешнего справочника не должна ломать разбор еды:
+      // остаются локальная база, разложение на ингредиенты и ручной ввод.
+      if (attempt === attempts.length - 1) {
+        console.warn(
+          `Поиск в USDA не удался для "${query}":`,
+          error instanceof Error ? error.message : error,
+        );
+        return [];
+      }
     }
 
-    const data = (await response.json()) as UsdaSearchResponse;
-    return (data.foods ?? [])
-      .map(toProduct)
-      .filter((p): p is NewProduct => p !== null);
-  } catch (error) {
-    // Недоступность внешнего справочника не должна ломать разбор еды:
-    // остаются локальная база и ручной ввод.
-    console.warn(
-      `Поиск в USDA не удался для "${query}":`,
-      error instanceof Error ? error.message : error,
-    );
-    return [];
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
+
+  return [];
 }
 
 /* ────────────────────── Open Food Facts (штрихкоды) ────────────────── */

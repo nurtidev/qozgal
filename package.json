@@ -18,7 +18,8 @@
     "bench:photo": "tsx src/bench.ts",
     "bench:text": "tsx src/bench-text.ts",
     "shot": "tsx e2e/shot.ts",
-    "test:api": "tsx --test e2e/api.test.ts"
+    "test:api": "tsx --test e2e/api.test.ts",
+    "audit:foods": "tsx src/db/audit-foods.ts"
   },
   "overrides": {
     "valibot": "^1.4.2",
