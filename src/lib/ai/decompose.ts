@@ -5,8 +5,18 @@ import { z } from 'zod';
 import { env } from '@/env';
 import type { RecognizedItem } from './schemas';
 
-const MODEL = 'claude-opus-5';
+/**
+ * Разложение — текстовая задача: вспомнить типовую рецептуру по названию
+ * блюда. Зрительного суждения здесь нет, поэтому используется та же модель,
+ * что и для текстового разбора.
+ */
+const MODEL = process.env.RECOGNITION_TEXT_MODEL ?? 'claude-haiku-4-5';
 const MAX_TOKENS = 4096;
+
+/** Haiku 4.5 не принимает output_config.effort и серверные фолбэки */
+const SUPPORTS_EFFORT = !MODEL.startsWith('claude-haiku');
+const SUPPORTS_FALLBACKS =
+  MODEL.startsWith('claude-opus-5') || MODEL.startsWith('claude-fable');
 
 const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
@@ -112,8 +122,12 @@ export async function decomposeDish(
     const response = await client.beta.messages.parse({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
+      ...(SUPPORTS_FALLBACKS
+        ? {
+            betas: ['server-side-fallback-2026-07-01' as const],
+            fallbacks: 'default' as const,
+          }
+        : {}),
       system: [
         {
           type: 'text',
@@ -122,7 +136,7 @@ export async function decomposeDish(
         },
       ],
       output_config: {
-        effort: 'medium',
+        ...(SUPPORTS_EFFORT ? { effort: 'medium' as const } : {}),
         format: betaZodOutputFormat(decompositionSchema),
       },
       messages: [{ role: 'user', content: description }],

@@ -12,18 +12,28 @@ import {
   type RecognitionFailure,
 } from './schemas';
 
-const MODEL = 'claude-opus-5';
+/**
+ * Модель выбирается по типу входа, потому что задачи разные по сложности.
+ *
+ * Фотография — зрительное суждение: определить блюдо и прикинуть вес по
+ * ракурсу и предметам в кадре. Здесь разница между моделями проявляется
+ * сильнее всего, и ошибка опасна тем, что незаметна: неверное блюдо
+ * подаётся тем же уверенным числом, что и верное. Замеры на бешбармаке:
+ * Sonnet 5 дал одинаковый результат в трёх прогонах из трёх, Haiku 4.5
+ * в двух прогонах из четырёх принял мясной бульон за травяной чай —
+ * а это расхождение больше чем в сто килокалорий на позицию.
+ *
+ * Текст — разбор уже названного пользователем состава, задача заметно
+ * проще, и модель поменьше справляется.
+ */
+const PHOTO_MODEL = process.env.RECOGNITION_PHOTO_MODEL ?? 'claude-sonnet-5';
+const TEXT_MODEL = process.env.RECOGNITION_TEXT_MODEL ?? 'claude-haiku-4-5';
 
 /**
- * Уровень усилий модели — главная ручка компромисса «качество / задержка / цена».
- *
- * Распознавание идёт в интерактивном пути: пользователь ждёт ответа в чате.
- * Задача при этом узкая — извлечь состав из одного изображения, а не вести
- * многошаговое рассуждение, и на Opus 5 средний уровень даёт качество,
- * близкое к максимальному, заметно дешевле и быстрее.
- *
- * Вынесено в переменную окружения, чтобы сравнивать варианты на своей
- * выборке блюд, не трогая код.
+ * Уровень усилий. На Opus 5 замеры показали, что эта ручка почти не влияет
+ * на разбор фотографии: medium и low дали одинаковый результат при разнице
+ * в задержке 5%. Задача почти не использует рассуждение, поэтому стоимость
+ * определяется размером изображения, а не глубиной размышления.
  */
 const EFFORT = (process.env.RECOGNITION_EFFORT ?? 'medium') as
   | 'low'
@@ -31,6 +41,20 @@ const EFFORT = (process.env.RECOGNITION_EFFORT ?? 'medium') as
   | 'high'
   | 'xhigh'
   | 'max';
+
+/** Haiku 4.5 не принимает output_config.effort — запрос с ним вернёт 400 */
+function supportsEffort(model: string): boolean {
+  return !model.startsWith('claude-haiku');
+}
+
+/**
+ * Серверные фолбэки на отказ классификаторов доступны для моделей уровня
+ * Opus 5 и Fable 5. Для остальных параметр отклоняется, да и смысла в нём
+ * меньше: отказы там устроены иначе.
+ */
+function supportsFallbacks(model: string): boolean {
+  return model.startsWith('claude-opus-5') || model.startsWith('claude-fable');
+}
 
 /**
  * Потолок вывода. Учитывает и рассуждение модели, и сам JSON: на Opus 5
@@ -73,16 +97,17 @@ interface RawCallResult {
 
 async function callModel(
   content: BetaContentBlockParam[],
+  model: string,
   withFallbacks: boolean,
 ): Promise<RawCallResult> {
   const response = await client.beta.messages.parse({
-    model: MODEL,
+    model,
     max_tokens: MAX_TOKENS,
 
     // Классификаторы безопасности могут отклонить запрос; серверный фолбэк
     // переигрывает его на другой модели в рамках того же вызова, вместо того
     // чтобы возвращать пользователю отказ на безобидном фото еды.
-    ...(withFallbacks
+    ...(withFallbacks && supportsFallbacks(model)
       ? {
           betas: ['server-side-fallback-2026-07-01' as const],
           fallbacks: 'default' as const,
@@ -100,7 +125,7 @@ async function callModel(
     ],
 
     output_config: {
-      effort: EFFORT,
+      ...(supportsEffort(model) ? { effort: EFFORT } : {}),
       format: betaZodOutputFormat(recognitionSchema),
     },
 
@@ -160,11 +185,12 @@ export async function recognizeFood(
   }
   content.push({ type: 'text', text: parts.join('\n') });
 
+  const model = imageBase64 ? PHOTO_MODEL : TEXT_MODEL;
   const startedAt = Date.now();
 
   let result: RawCallResult;
   try {
-    result = await callModel(content, true);
+    result = await callModel(content, model, true);
   } catch (error) {
     // Серверные фолбэки — относительно свежая бета. Если конкретный аккаунт
     // или регион её ещё не принимает, разбор еды не должен падать целиком:
@@ -175,7 +201,7 @@ export async function recognizeFood(
         error instanceof Error ? error.message : error,
       );
       try {
-        result = await callModel(content, false);
+        result = await callModel(content, model, false);
       } catch (retryError) {
         return apiFailure(retryError);
       }
