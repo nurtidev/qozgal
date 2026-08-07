@@ -336,6 +336,62 @@ describe('Повтор приёма пищи', () => {
   });
 });
 
+describe('Тренировки', () => {
+  test('справочник упражнений отдаётся', async () => {
+    const { status, body } = await call('/api/exercises', ALICE);
+    assert.equal(status, 200);
+    const list = body.exercises as { name: string; muscleGroup: string }[];
+    assert.ok(list.length >= 30, 'ожидался наполненный справочник');
+    assert.ok(list.some((e) => e.muscleGroup === 'legs'));
+  });
+
+  test('казахоязычному упражнения приходят по-казахски', async () => {
+    const { body } = await call('/api/exercises?q=жим', KAIRAT);
+    const list = body.exercises as { name: string }[];
+    // «Жим лёжа» → «Жатып итеру»; поиск идёт по обоим языкам
+    assert.ok(list.some((e) => /итеру/.test(e.name)), 'ожидалось казахское название');
+  });
+
+  test('чужая тренировка не читается', async () => {
+    const fakeId = '00000000-0000-4000-8000-000000000000';
+    const { status } = await call(`/api/workouts/${fakeId}`, BOB);
+    assert.equal(status, 404);
+  });
+
+  test('подход в чужую тренировку не добавить', async () => {
+    const fakeId = '00000000-0000-4000-8000-000000000000';
+    const { status } = await call(`/api/workouts/${fakeId}/sets`, BOB, {
+      method: 'POST',
+      body: JSON.stringify({
+        exerciseId: '00000000-0000-4000-8000-000000000001',
+        reps: 8,
+      }),
+    });
+    assert.equal(status, 404);
+  });
+
+  test('тренировка заводится и удаляется', async () => {
+    const created = await call('/api/workouts', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ durationMin: 45 }),
+    });
+    assert.equal(created.status, 200);
+    const id = created.body.id as string;
+
+    const read = await call(`/api/workouts/${id}`, ALICE);
+    assert.equal(read.status, 200);
+    assert.equal(read.body.durationMin, 45);
+    // Подходов нет — тоннаж нулевой, а не выдуманный
+    assert.equal(read.body.volumeKg, 0);
+
+    const foreign = await call(`/api/workouts/${id}`, BOB);
+    assert.equal(foreign.status, 404, 'чужая тренировка должна быть невидима');
+
+    const removed = await call(`/api/workouts/${id}`, ALICE, { method: 'DELETE' });
+    assert.equal(removed.status, 200);
+  });
+});
+
 describe('Язык ответов', () => {
   test('ошибка валидации приходит по-казахски', async () => {
     const { status, body } = await call('/api/onboarding', KAIRAT, {

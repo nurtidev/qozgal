@@ -1,6 +1,7 @@
 import { db } from './index';
-import { products } from './schema';
+import { products, exercises } from './schema';
 import { KAZAKH_FOODS } from './seed-data/kazakh-foods';
+import { EXERCISES } from './seed-data/exercises';
 
 /**
  * Наполняет справочник локальными блюдами.
@@ -35,6 +36,8 @@ async function seed() {
 
   console.log(`Готово: ${saved.length} карточек в справочнике.`);
 
+  await seedExercises();
+
   const unverified = KAZAKH_FOODS.filter((f) => !f.isVerified).length;
   if (unverified > 0) {
     console.warn(
@@ -44,6 +47,27 @@ async function seed() {
         '   химического состава блюд — см. комментарий в seed-data/kazakh-foods.ts',
     );
   }
+}
+
+/**
+ * Справочник упражнений.
+ *
+ * Дописываем недостающие, а не перезаписываем всё: у таблицы нет уникального
+ * ключа по названию, а на упражнения ссылаются подходы в чужих тренировках —
+ * пересоздание оборвало бы эти ссылки.
+ */
+async function seedExercises() {
+  const existing = await db.select({ nameRu: exercises.nameRu }).from(exercises);
+  const known = new Set(existing.map((e) => e.nameRu));
+  const missing = EXERCISES.filter((e) => !known.has(e.nameRu));
+
+  if (missing.length === 0) {
+    console.log(`Упражнения: ${known.size} на месте, добавлять нечего.`);
+    return;
+  }
+
+  await db.insert(exercises).values(missing);
+  console.log(`Упражнения: добавлено ${missing.length}, всего ${known.size + missing.length}.`);
 }
 
 seed()

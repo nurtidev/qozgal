@@ -249,6 +249,10 @@ export default function DashboardPage() {
           onOpen={() => router.push('/measurements')}
         />
         <NavRow
+          title={t('workouts')}
+          onOpen={() => router.push('/workouts')}
+        />
+        <NavRow
           title={t('profile')}
           caption={me.goal ? `${me.goal.kcalTarget} ${tc('kcal')}` : undefined}
           onOpen={() => router.push('/profile')}

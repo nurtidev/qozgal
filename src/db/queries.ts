@@ -3,6 +3,7 @@ import { db } from './index';
 import {
   users,
   goals,
+  weightLogs,
   foodEntries,
   foodItems,
   type User,
@@ -220,6 +221,18 @@ export async function getDayTotals(
     carbsG: Math.round(Number(row?.carbsG ?? 0) * 10) / 10,
     entryCount: Number(row?.entryCount ?? 0),
   };
+}
+
+/** Последнее взвешивание — нужно там, где расчёт идёт от веса тела */
+export async function latestWeight(userId: string) {
+  const [row] = await db
+    .select()
+    .from(weightLogs)
+    .where(eq(weightLogs.userId, userId))
+    .orderBy(desc(weightLogs.loggedOn))
+    .limit(1);
+
+  return row ?? null;
 }
 
 /** Активная цель пользователя — из неё берётся дневная норма калорий */
