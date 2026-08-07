@@ -126,6 +126,69 @@ bot.on('message:photo', async (ctx) => {
   }
 });
 
+/* ───────────────── Фото, отправленное файлом «без сжатия» ──────────── */
+
+/** Форматы, которые понимает модель */
+const IMAGE_MIME: Record<string, ImageMediaType> = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'image/gif': 'image/gif',
+};
+
+/** Ограничение API на изображение — 5 МБ в base64, берём запас */
+const MAX_DOCUMENT_BYTES = 3.5 * 1024 * 1024;
+
+/**
+ * Телефон отправляет снимок сжатым, но часть людей шлёт «как файл», чтобы
+ * не терять качество. Без этого обработчика такое сообщение молча уходило
+ * в никуда: бот слушал только message:photo, а документ не подходил ни под
+ * один фильтр — пользователь не получал даже сообщения об ошибке.
+ *
+ * Оговорка по стоимости: у документа нет лестницы размеров, поэтому
+ * изображение уходит в модель как есть. Снимок с современного телефона
+ * может весить в разы больше, чем выбранный нами 1000-пиксельный вариант
+ * для обычного фото. Если такие отправки станут заметной долей, стоит
+ * добавить уменьшение на нашей стороне.
+ */
+bot.on('message:document', async (ctx) => {
+  const doc = ctx.message.document;
+  const mediaType = doc.mime_type ? IMAGE_MIME[doc.mime_type] : undefined;
+
+  if (!mediaType) {
+    await ctx.reply(
+      'Я понимаю фотографии и текстовые описания. Пришлите снимок блюда или напишите, что съели.',
+    );
+    return;
+  }
+
+  if (doc.file_size && doc.file_size > MAX_DOCUMENT_BYTES) {
+    await ctx.reply(
+      'Файл слишком большой. Отправьте это же фото обычным способом — без пометки «без сжатия».',
+    );
+    return;
+  }
+
+  const user = await resolveUser(ctx);
+  if (!user) return;
+
+  const status = await ctx.reply('Разбираю фотографию…');
+
+  try {
+    const imageBase64 = await downloadPhoto(doc.file_id);
+    await handleRecognition(ctx, user, status.message_id, {
+      imageBase64,
+      imageMediaType: mediaType,
+      text: ctx.message.caption,
+      photoRef: `tg:${doc.file_id}`,
+      source: 'photo',
+      rawInput: ctx.message.caption,
+    });
+  } catch (error) {
+    await reportFailure(ctx, status.message_id, error);
+  }
+});
+
 /* ────────────────────── Разбор текстового описания ─────────────────── */
 
 bot.on('message:text', async (ctx) => {
