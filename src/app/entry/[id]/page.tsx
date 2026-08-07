@@ -335,6 +335,20 @@ export default function EntryPage() {
         ))}
       </section>
 
+      {/* Добавление пишется в запись сразу, не дожидаясь «Сохранить»:
+          позиция приходит с сервера уже с посчитанными нутриентами, и
+          держать её только в состоянии экрана значило бы показывать цифры,
+          которых в дневнике ещё нет. Убрать её можно тем же крестиком. */}
+      <AddItem
+        entryId={entry.id}
+        onAdded={(item) => {
+          setEntry((prev) =>
+            prev ? { ...prev, items: [...prev.items, item] } : prev,
+          );
+          setGrams((prev) => ({ ...prev, [item.id]: String(item.grams) }));
+        }}
+      />
+
       {empty && <Hint>{t('emptyHint')}</Hint>}
 
       {entry.status === 'discarded' && !empty && <Hint>{t('discardedHint')}</Hint>}
@@ -364,6 +378,153 @@ export default function EntryPage() {
         )}
       </div>
     </Screen>
+  );
+}
+
+/* ─────────────────────── Добавление позиции ────────────────────────── */
+
+interface Found {
+  id: string;
+  name: string;
+  kcalPer100g: number;
+  defaultPortionG: number | null;
+  portionLabel: string | null;
+  isVerified: boolean;
+}
+
+/**
+ * Поиск по справочнику для позиции, которую модель не увидела.
+ *
+ * Свободный ввод названия пришлось бы отправлять в модель, и одна забытая
+ * пиала чая стоила бы столько же, сколько разбор всей тарелки. Поэтому
+ * выбор из справочника: числа детерминированы, вызовов модели ноль.
+ */
+function AddItem({
+  entryId,
+  onAdded,
+}: {
+  entryId: string;
+  onAdded: (item: Item) => void;
+}) {
+  const t = useTranslations('entry');
+  const tc = useTranslations('common');
+
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Found[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // По одной букве выдача бессмысленна — половина справочника подойдёт
+  const text = query.trim();
+  const tooShort = text.length < 2;
+
+  useEffect(() => {
+    if (!open || tooShort) return;
+
+    // Пауза перед запросом: без неё на сервер уходит по запросу на каждую
+    // набранную букву, а на мобильной сети это ещё и заметно тормозит ввод
+    const timer = setTimeout(async () => {
+      try {
+        const found = await api<{ products: Found[] }>(
+          `/api/products?q=${encodeURIComponent(text)}`,
+        );
+        setResults(found.products);
+      } catch {
+        setResults([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [text, open, tooShort]);
+
+  async function add(product: Found) {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api<{ item: Item }>(`/api/entries/${entryId}/items`, {
+        method: 'POST',
+        body: JSON.stringify({
+          productId: product.id,
+          // Типичная порция из справочника — стартовое значение, которое
+          // человек тут же поправит кнопками ± как у любой другой позиции
+          grams: product.defaultPortionG ?? 100,
+        }),
+      });
+      haptic('success');
+      onAdded(result.item);
+      setOpen(false);
+      setQuery('');
+      setResults(null);
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof ApiError ? e.message : t('addFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button variant="ghost" onClick={() => setOpen(true)}>
+        {t('addItem')}
+      </Button>
+    );
+  }
+
+  return (
+    <Card className="flex flex-col gap-3">
+      <input
+        value={query}
+        autoFocus
+        inputMode="text"
+        placeholder={t('searchPlaceholder')}
+        onChange={(e) => setQuery(e.target.value)}
+        className="min-h-12 w-full rounded-xl bg-[var(--tg-theme-bg-color)] px-4 text-base outline-none"
+      />
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+
+      {tooShort || results === null ? (
+        <Hint>{t('searchHint')}</Hint>
+      ) : results.length === 0 ? (
+        <Hint>{t('searchEmpty')}</Hint>
+      ) : (
+        <ul className="flex flex-col">
+          {results.map((product) => (
+            <li key={product.id}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => add(product)}
+                className="flex w-full min-h-14 items-center justify-between gap-3 border-b border-[var(--tg-theme-bg-color)] py-2 text-left last:border-0 active:opacity-60 disabled:opacity-40"
+              >
+                <span className="flex flex-col">
+                  <span className="text-base leading-tight">{product.name}</span>
+                  <span className="tabular text-xs text-[var(--tg-theme-hint-color)]">
+                    {t('per100', { kcal: product.kcalPer100g })}
+                    {/* Карточки местной кухни — расчётные оценки, а не
+                        измерения; человек вправе знать это до выбора */}
+                    {!product.isVerified && ` · ${t('estimate')}`}
+                  </span>
+                </span>
+                {product.defaultPortionG && (
+                  <span className="tabular shrink-0 text-sm text-[var(--tg-theme-hint-color)]">
+                    {product.defaultPortionG} {tc('g')}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Не «Назад»: внизу экрана уже есть кнопка с этим словом, и она
+          уводит с экрана, а эта всего лишь сворачивает поиск */}
+      <Button variant="ghost" onClick={() => setOpen(false)}>
+        {t('searchClose')}
+      </Button>
+    </Card>
   );
 }
 

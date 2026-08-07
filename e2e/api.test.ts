@@ -276,6 +276,46 @@ describe('Дневник', () => {
   });
 });
 
+describe('Справочник продуктов', () => {
+  test('поиск находит карточку местной кухни', async () => {
+    const { status, body } = await call('/api/products?q=беш', ALICE);
+    assert.equal(status, 200);
+    const found = body.products as { name: string; kcalPer100g: number }[];
+    assert.ok(found.length > 0, 'ожидалась хотя бы одна карточка');
+    assert.match(found[0].name, /Бешбармак/);
+  });
+
+  test('казахоязычному имя приходит по-казахски', async () => {
+    const { body } = await call('/api/products?q=беш', KAIRAT);
+    const found = body.products as { name: string }[];
+    assert.match(found[0].name, /Бесбармақ/);
+  });
+
+  test('запрос короче двух букв не выдаёт полсправочника', async () => {
+    const { body } = await call('/api/products?q=б', ALICE);
+    assert.deepEqual(body.products, []);
+  });
+
+  test('шаблон LIKE в запросе не подставляется', async () => {
+    // «%» должен искаться как символ, а не как «что угодно»
+    const { status, body } = await call('/api/products?q=%%', ALICE);
+    assert.equal(status, 200);
+    assert.deepEqual(body.products, []);
+  });
+
+  test('дописать позицию в чужую запись нельзя', async () => {
+    const fakeId = '00000000-0000-4000-8000-000000000000';
+    const { status } = await call(`/api/entries/${fakeId}/items`, BOB, {
+      method: 'POST',
+      body: JSON.stringify({
+        productId: '00000000-0000-4000-8000-000000000001',
+        grams: 100,
+      }),
+    });
+    assert.equal(status, 404);
+  });
+});
+
 describe('Язык ответов', () => {
   test('ошибка валидации приходит по-казахски', async () => {
     const { status, body } = await call('/api/onboarding', KAIRAT, {
