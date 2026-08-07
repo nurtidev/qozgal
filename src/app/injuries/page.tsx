@@ -10,6 +10,7 @@ import {
   haptic,
   useTelegramApp,
   useTelegramBack,
+  useMainButton,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -131,6 +132,14 @@ export default function InjuriesPage() {
     }
   }
 
+  useMainButton({
+    text: adding ? t('save') : t('add'),
+    onClick: () => (adding ? add() : setAdding(true)),
+    visible: injuries !== null,
+    disabled: adding && !area,
+    loading: busy,
+  });
+
   if (error && !injuries) {
     return (
       <Screen>
@@ -221,16 +230,11 @@ export default function InjuriesPage() {
             }))}
           />
 
-          <Button onClick={add} loading={busy} disabled={!area}>
-            {t('save')}
-          </Button>
           <Button variant="ghost" onClick={() => setAdding(false)}>
             {tc('back')}
           </Button>
         </Card>
-      ) : (
-        <Button onClick={() => setAdding(true)}>{t('add')}</Button>
-      )}
+      ) : null}
 
       {error && <ErrorNote>{error}</ErrorNote>}
 

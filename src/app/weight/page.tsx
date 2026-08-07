@@ -10,6 +10,8 @@ import {
   haptic,
   useTelegramApp,
   useTelegramBack,
+  useMainButton,
+  useClosingConfirmation,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -143,6 +145,16 @@ export default function WeightPage() {
     }
   }
 
+  // Набранный вес ещё не записан — свайп вниз потерял бы его
+  useClosingConfirmation(Boolean(value) && value !== String(me?.weight?.kg ?? ''));
+
+  useMainButton({
+    text: saved ? t('recorded') : t('record'),
+    onClick: save,
+    visible: history !== null,
+    loading: saving,
+  });
+
   if (error && !history) {
     return (
       <Screen>
@@ -257,10 +269,6 @@ export default function WeightPage() {
             hint={t('dateHint')}
           />
         )}
-
-        <Button onClick={save} loading={saving}>
-          {saved ? t('recorded') : t('record')}
-        </Button>
 
         {!showDate && (
           <Button variant="ghost" onClick={() => setShowDate(true)}>

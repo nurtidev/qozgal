@@ -10,6 +10,8 @@ import {
   haptic,
   useTelegramApp,
   useTelegramBack,
+  useMainButton,
+  useClosingConfirmation,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -195,6 +197,16 @@ export default function MeasurementsPage() {
     }
   }
 
+  // Набранные обхваты не сохранены, пока не нажата кнопка
+  useClosingConfirmation(Object.values(values).some(Boolean) && !saved);
+
+  useMainButton({
+    text: saved ? t('saved') : t('save'),
+    onClick: save,
+    visible: history !== null,
+    loading: saving,
+  });
+
   if (error && !history) {
     return (
       <Screen>
@@ -328,9 +340,6 @@ export default function MeasurementsPage() {
           </Button>
         )}
 
-        <Button onClick={save} loading={saving}>
-          {saved ? t('saved') : t('save')}
-        </Button>
       </Card>
 
       {error && <ErrorNote>{error}</ErrorNote>}

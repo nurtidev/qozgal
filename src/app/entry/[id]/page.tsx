@@ -10,6 +10,8 @@ import {
   haptic,
   useTelegramApp,
   useTelegramBack,
+  useMainButton,
+  useClosingConfirmation,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -161,6 +163,42 @@ export default function EntryPage() {
     return () => clearTimeout(timer);
   }, [armed]);
 
+  const kept = entry?.items.filter((i) => !removed.includes(i.id)) ?? [];
+  const invalid = kept.some((i) => toGrams(grams[i.id] ?? '') === null);
+  const empty = entry !== null && kept.length === 0;
+
+  // Удаление всегда идёт через второй тап — и с красной кнопки внизу,
+  // и с главной, в которую она превращается, когда позиций не осталось
+  const armDelete = () => (armed ? remove() : setArmed(true));
+
+  const primaryLabel = empty
+    ? armed
+      ? t('deleteConfirm')
+      : t('delete')
+    : entry?.status === 'confirmed'
+      ? t('save')
+      : entry?.status === 'discarded'
+        ? t('restoreEntry')
+        : t('confirm');
+
+  // Правка не сохранена, пока не нажата главная кнопка: свайп вниз закроет
+  // приложение вместе с набранными граммовками, если не спросить
+  const dirty =
+    entry !== null &&
+    (removed.length > 0 ||
+      mealType !== entry.mealType ||
+      entry.items.some((i) => toGrams(grams[i.id] ?? '') !== i.grams));
+
+  useClosingConfirmation(dirty);
+
+  useMainButton({
+    text: primaryLabel,
+    onClick: () => (empty ? armDelete() : save()),
+    visible: entry !== null,
+    disabled: invalid,
+    loading: saving,
+  });
+
   if (missing) {
     return (
       <Screen>
@@ -189,9 +227,6 @@ export default function EntryPage() {
       </Screen>
     );
   }
-
-  const kept = entry.items.filter((i) => !removed.includes(i.id));
-  const invalid = kept.some((i) => toGrams(grams[i.id] ?? '') === null);
 
   const totals = kept.reduce<Nutrition>(
     (sum, item) => {
@@ -287,21 +322,6 @@ export default function EntryPage() {
   }
 
   const sourceKey = SOURCE_KEYS[entry.source as keyof typeof SOURCE_KEYS];
-  const empty = kept.length === 0;
-
-  // Удаление всегда идёт через второй тап — и с красной кнопки внизу,
-  // и с главной, в которую она превращается, когда позиций не осталось
-  const armDelete = () => (armed ? remove() : setArmed(true));
-
-  const primaryLabel = empty
-    ? armed
-      ? t('deleteConfirm')
-      : t('delete')
-    : entry.status === 'confirmed'
-      ? t('save')
-      : entry.status === 'discarded'
-        ? t('restoreEntry')
-        : t('confirm');
 
   return (
     <Screen>
@@ -380,16 +400,11 @@ export default function EntryPage() {
 
       {entry.status === 'discarded' && !empty && <Hint>{t('discardedHint')}</Hint>}
 
+      {/* Главное действие — кнопкой Telegram внизу окна, здесь только
+          второстепенные. Своя «Назад» тоже убрана: системная стрелка уже
+          есть в шапке, а две кнопки с одним смыслом — визуальный шум */}
       <div className="mt-auto flex flex-col gap-2 pt-4">
         {error && <ErrorNote>{error}</ErrorNote>}
-
-        <Button
-          onClick={empty ? armDelete : save}
-          loading={saving}
-          disabled={invalid}
-        >
-          {primaryLabel}
-        </Button>
 
         {/* Повторять есть смысл только то, что уже посчитано: у черновика
             цифры ещё не подтверждены, а у пустой записи копировать нечего */}
@@ -398,10 +413,6 @@ export default function EntryPage() {
             {t('repeat')}
           </Button>
         )}
-
-        <Button variant="ghost" onClick={leave}>
-          {tc('back')}
-        </Button>
 
         {!empty && (
           // Второй тап вместо системного диалога: showConfirm ведёт себя

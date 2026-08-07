@@ -99,12 +99,61 @@ function buildStubScript(
   return `
 (function () {
   var noop = function () {};
-  var button = {
-    text: '', isVisible: false,
-    show: noop, hide: noop, enable: noop, disable: noop, setText: noop,
-    onClick: noop, offClick: noop, showProgress: noop, hideProgress: noop
-  };
   var theme = ${JSON.stringify(themeParams)};
+
+  /**
+   * MainButton и BackButton — настоящими элементами, а не заглушками.
+   *
+   * Клиент Telegram рисует их сам, вне страницы, и заглушка-пустышка
+   * означала бы, что главное действие экрана в браузерной проверке просто
+   * недоступно: нажать нечего. Обвязка, из-за которой нельзя проверить
+   * основной сценарий, бесполезна, поэтому кнопки создаются в DOM
+   * и ведут себя как настоящие — текст, видимость, блокировка, прогресс.
+   */
+  function makeButton(id, label) {
+    var el = document.createElement('button');
+    el.id = id;
+    el.type = 'button';
+    el.hidden = true;
+    el.setAttribute('data-telegram-stub', label);
+    el.style.cssText =
+      'display:block;width:calc(100% - 32px);margin:12px 16px 16px;min-height:48px;' +
+      'border:0;border-radius:12px;font-size:16px;font-weight:500;' +
+      'background:' + theme.button_color + ';color:' + theme.button_text_color + ';';
+    return el;
+  }
+
+  var mainEl = makeButton('tg-main-button', 'MainButton');
+  var backEl = makeButton('tg-back-button', 'BackButton');
+  backEl.style.background = 'transparent';
+  backEl.style.color = theme.link_color || theme.button_color;
+  backEl.textContent = 'Назад';
+
+  function mount() {
+    if (!document.body) return;
+    if (!mainEl.isConnected) document.body.appendChild(mainEl);
+    if (!backEl.isConnected) document.body.appendChild(backEl);
+  }
+
+  function bind(el) {
+    var handlers = [];
+    return {
+      get text() { return el.textContent || ''; },
+      get isVisible() { return !el.hidden; },
+      setText: function (t) { el.textContent = t; },
+      show: function () { mount(); el.hidden = false; },
+      hide: function () { el.hidden = true; },
+      enable: function () { el.disabled = false; el.style.opacity = '1'; },
+      disable: function () { el.disabled = true; el.style.opacity = '0.4'; },
+      showProgress: function () { el.dataset.progress = '1'; },
+      hideProgress: function () { delete el.dataset.progress; },
+      onClick: function (cb) { handlers.push(cb); el.addEventListener('click', cb); },
+      offClick: function (cb) { el.removeEventListener('click', cb); }
+    };
+  }
+
+  var mainButton = bind(mainEl);
+  var backButton = bind(backEl);
 
   window.Telegram = {
     WebApp: {
@@ -127,9 +176,11 @@ function buildStubScript(
       ready: noop, expand: noop, close: noop,
       onEvent: noop, offEvent: noop, sendData: noop, openLink: noop,
       showAlert: noop, showConfirm: noop,
-      MainButton: Object.assign({}, button),
-      SecondaryButton: Object.assign({}, button),
-      BackButton: { isVisible: false, show: noop, hide: noop, onClick: noop, offClick: noop },
+      MainButton: mainButton,
+      SecondaryButton: bind(makeButton('tg-secondary-button', 'SecondaryButton')),
+      BackButton: backButton,
+      enableClosingConfirmation: function () { window.__tgClosingConfirmation = true; },
+      disableClosingConfirmation: function () { window.__tgClosingConfirmation = false; },
       HapticFeedback: { impactOccurred: noop, notificationOccurred: noop, selectionChanged: noop },
       CloudStorage: { getItem: noop, setItem: noop, removeItem: noop }
     }
@@ -153,6 +204,9 @@ function buildStubScript(
   } else {
     document.addEventListener('DOMContentLoaded', applyTheme);
   }
+
+  // Кнопки живут в конце body — его на момент выполнения скрипта ещё нет
+  document.addEventListener('DOMContentLoaded', mount);
 })();
 `;
 }

@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
-import { api, ApiError, haptic, useTelegramApp } from '@/lib/telegram/client';
+import {
+  api,
+  ApiError,
+  haptic,
+  useTelegramApp,
+  useMainButton,
+} from '@/lib/telegram/client';
 import type { Adjustment } from '@/lib/health/energy';
 import {
   Screen,
@@ -130,6 +136,14 @@ export default function OnboardingPage() {
       setSaving(false);
     }
   }
+
+  useMainButton({
+    text: step === STEPS.length - 1 ? t('calculate') : tc('next'),
+    onClick: () => (step === STEPS.length - 1 ? submit() : setStep(step + 1)),
+    visible: plan === null,
+    disabled: !canContinue,
+    loading: saving,
+  });
 
   if (plan) return <PlanSummary plan={plan} onDone={() => router.replace('/')} />;
 
@@ -270,14 +284,9 @@ export default function OnboardingPage() {
         </div>
       )}
 
+      {/* Главное действие — кнопкой Telegram внизу окна; здесь остаются
+          только шаг назад и пропуск необязательного шага */}
       <div className="mt-auto flex flex-col gap-2 pt-4">
-        <Button
-          onClick={() => (step === STEPS.length - 1 ? submit() : setStep(step + 1))}
-          disabled={!canContinue}
-          loading={saving}
-        >
-          {step === STEPS.length - 1 ? t('calculate') : tc('next')}
-        </Button>
         {step > 0 && (
           <Button variant="ghost" onClick={() => setStep(step - 1)}>
             {tc('back')}
@@ -297,6 +306,7 @@ export default function OnboardingPage() {
 
 function PlanSummary({ plan, onDone }: { plan: Plan; onDone: () => void }) {
   const t = useTranslations('onboarding');
+  useMainButton({ text: t('start'), onClick: onDone });
   const tc = useTranslations('common');
   const tm = useTranslations('macros');
 
@@ -369,9 +379,7 @@ function PlanSummary({ plan, onDone }: { plan: Plan; onDone: () => void }) {
 
       <Hint>{t('planHint')}</Hint>
 
-      <div className="mt-auto pt-4">
-        <Button onClick={onDone}>{t('start')}</Button>
-      </div>
+
     </Screen>
   );
 }

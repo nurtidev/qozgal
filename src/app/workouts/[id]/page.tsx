@@ -10,6 +10,7 @@ import {
   haptic,
   useTelegramApp,
   useTelegramBack,
+  useMainButton,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -193,6 +194,12 @@ export default function WorkoutPage() {
       setBusy(false);
     }
   }
+
+  useMainButton({
+    text: t('done'),
+    onClick: () => router.replace('/workouts'),
+    visible: workout !== null,
+  });
 
   if (error && !workout) {
     return (
@@ -428,8 +435,8 @@ export default function WorkoutPage() {
         </Hint>
       )}
 
+      {/* Главное действие — кнопкой Telegram внизу окна */}
       <div className="mt-auto flex flex-col gap-2 pt-4">
-        <Button onClick={() => router.replace('/workouts')}>{t('done')}</Button>
         <Button
           variant="danger"
           disabled={busy}

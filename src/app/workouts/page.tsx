@@ -10,6 +10,7 @@ import {
   haptic,
   useTelegramApp,
   useTelegramBack,
+  useMainButton,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -82,6 +83,13 @@ export default function WorkoutsPage() {
     }
   }
 
+  useMainButton({
+    text: t('start'),
+    onClick: start,
+    visible: workouts !== null,
+    loading: starting,
+  });
+
   if (error && !workouts) {
     return (
       <Screen>
@@ -117,10 +125,6 @@ export default function WorkoutsPage() {
           </span>
         </Card>
       )}
-
-      <Button onClick={start} loading={starting}>
-        {t('start')}
-      </Button>
 
       {error && <ErrorNote>{error}</ErrorNote>}
 

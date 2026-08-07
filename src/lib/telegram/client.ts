@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * Клиентская сторона моста Telegram.
@@ -39,6 +39,20 @@ export interface TelegramWebApp {
     onClick(cb: () => void): void;
     offClick(cb: () => void): void;
   };
+  /** Кнопка главного действия, закреплённая внизу окна клиентом Telegram */
+  MainButton?: {
+    setText(text: string): void;
+    show(): void;
+    hide(): void;
+    enable(): void;
+    disable(): void;
+    showProgress(leaveActive?: boolean): void;
+    hideProgress(): void;
+    onClick(cb: () => void): void;
+    offClick(cb: () => void): void;
+  };
+  enableClosingConfirmation?(): void;
+  disableClosingConfirmation?(): void;
 }
 
 export function getWebApp(): TelegramWebApp | null {
@@ -100,6 +114,78 @@ export function useTelegramBack(onBack: () => void): void {
       back.hide();
     };
   }, [onBack]);
+}
+
+/**
+ * Главное действие экрана — кнопкой самого Telegram.
+ *
+ * Она закреплена внизу окна и не уезжает при прокрутке, умеет показывать
+ * прогресс и не даёт нажать себя дважды. Своя кнопка в потоке страницы
+ * всего этого не умеет и выдаёт веб-страницу, обёрнутую в клиент, — а это
+ * первое, что ломает ощущение приложения.
+ *
+ * Обработчик держим в ref: иначе каждая перерисовка отписывала бы и
+ * подписывала кнопку заново, а Telegram на это отвечает миганием.
+ */
+export function useMainButton(options: {
+  text: string;
+  onClick: () => void;
+  visible?: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+}): void {
+  const { text, visible = true, disabled = false, loading = false } = options;
+  const handler = useRef(options.onClick);
+  handler.current = options.onClick;
+
+  useEffect(() => {
+    const button = getWebApp()?.MainButton;
+    if (!button) return;
+
+    const click = () => handler.current();
+    button.onClick(click);
+
+    return () => {
+      button.offClick(click);
+      button.hide();
+    };
+  }, []);
+
+  useEffect(() => {
+    const button = getWebApp()?.MainButton;
+    if (!button) return;
+
+    button.setText(text);
+    if (visible) button.show();
+    else button.hide();
+
+    // Прогресс и блокировка — разные состояния: во время сохранения кнопка
+    // остаётся видимой, но нажать её второй раз нельзя
+    if (loading) button.showProgress();
+    else button.hideProgress();
+
+    if (disabled || loading) button.disable();
+    else button.enable();
+  }, [text, visible, disabled, loading]);
+}
+
+/**
+ * Подтверждение закрытия.
+ *
+ * Mini App закрывается свайпом вниз — жестом, который легко сделать
+ * случайно. На экране с незаконченной правкой это стоит человеку набранных
+ * граммовок; Telegram умеет спросить, и не спросить было бы небрежностью.
+ */
+export function useClosingConfirmation(enabled: boolean): void {
+  useEffect(() => {
+    const app = getWebApp();
+    if (!app?.enableClosingConfirmation) return;
+
+    if (enabled) app.enableClosingConfirmation();
+    else app.disableClosingConfirmation?.();
+
+    return () => app.disableClosingConfirmation?.();
+  }, [enabled]);
 }
 
 /* ─────────────────────────── Запросы к API ─────────────────────────── */

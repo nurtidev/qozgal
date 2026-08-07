@@ -10,6 +10,8 @@ import {
   haptic,
   useTelegramApp,
   useTelegramBack,
+  useMainButton,
+  useClosingConfirmation,
 } from '@/lib/telegram/client';
 import {
   Screen,
@@ -182,6 +184,16 @@ export default function ProfilePage() {
     }
   }
 
+  // В режиме правки набранное не сохранено, пока не нажата кнопка
+  useClosingConfirmation(editing);
+
+  useMainButton({
+    text: editing ? t('recalculate') : t('edit'),
+    onClick: () => (editing ? save() : setEditing(true)),
+    visible: me?.profile !== undefined,
+    loading: saving,
+  });
+
   if (error && !me) {
     return (
       <Screen>
@@ -287,12 +299,7 @@ export default function ProfilePage() {
             <Hint>{t('bodyTypeMixed')}</Hint>
           )}
 
-          <div className="mt-auto flex flex-col gap-2 pt-4">
-            <Button onClick={() => setEditing(true)}>{t('edit')}</Button>
-            <Button variant="ghost" onClick={() => router.replace('/')}>
-              {tc('back')}
-            </Button>
-          </div>
+
         </>
       ) : (
         <div className="fade-in flex flex-col gap-4">
@@ -359,14 +366,9 @@ export default function ProfilePage() {
 
           {error && <ErrorNote>{error}</ErrorNote>}
 
-          <div className="flex flex-col gap-2">
-            <Button onClick={save} loading={saving}>
-              {t('recalculate')}
-            </Button>
-            <Button variant="ghost" onClick={() => setEditing(false)}>
-              {tc('back')}
-            </Button>
-          </div>
+          <Button variant="ghost" onClick={() => setEditing(false)}>
+            {tc('back')}
+          </Button>
         </div>
       )}
     </Screen>

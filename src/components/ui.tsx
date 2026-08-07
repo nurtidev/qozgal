@@ -9,7 +9,9 @@ import { haptic } from '@/lib/telegram/client';
 
 export function Screen({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 pt-4 pb-8">
+    // Запас снизу под кнопку Telegram: она рисуется поверх окна, и без
+    // отступа последний элемент экрана оказывался бы под ней
+    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 pt-4 pb-24">
       {children}
     </main>
   );
