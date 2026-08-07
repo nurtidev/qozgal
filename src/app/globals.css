@@ -69,8 +69,27 @@ body {
   animation: fade-in 0.2s ease-out;
 }
 
+/* Пульсация каркаса загрузки: мягче стандартной, чтобы не мельтешила */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.skeleton {
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fade-in {
+    animation: none;
+  }
+
+  .skeleton {
     animation: none;
   }
 }

@@ -317,6 +317,44 @@ export function CalorieRing({
   );
 }
 
+/**
+ * Каркас содержимого на время загрузки.
+ *
+ * Вместо крутящегося кружка: он говорит «что-то происходит», а каркас —
+ * «сейчас здесь будет вот это». Разница заметна на мобильной сети, где
+ * ожидание длится секунду-две, и экран не должен выглядеть сломанным.
+ */
+export function Skeleton({ className = '' }: { className?: string }) {
+  // Скругление задаёт вызывающий: кольцо калорий круглое, карточки — нет,
+  // а в базовом классе оно перебивало бы переданное
+  return (
+    <div className={`skeleton bg-[var(--tg-theme-secondary-bg-color)] ${className}`} />
+  );
+}
+
+/** Типовой каркас: заголовок и несколько карточек */
+export function ScreenSkeleton({
+  rows = 3,
+  ring = false,
+}: {
+  rows?: number;
+  ring?: boolean;
+}) {
+  return (
+    <>
+      <Skeleton className="h-7 w-40 rounded-lg" />
+      {ring && (
+        <div className="flex justify-center py-2">
+          <Skeleton className="h-44 w-44 rounded-full" />
+        </div>
+      )}
+      {Array.from({ length: rows }, (_, i) => (
+        <Skeleton key={i} className="h-20 w-full rounded-2xl" />
+      ))}
+    </>
+  );
+}
+
 export function Spinner() {
   return (
     <div className="flex justify-center py-12">

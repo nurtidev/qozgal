@@ -20,7 +20,7 @@ import {
   Button,
   Segmented,
   Field,
-  Spinner,
+  ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
 import { useDates } from '@/i18n/dates';
@@ -167,7 +167,7 @@ export default function WeightPage() {
   if (!me || !history) {
     return (
       <Screen>
-        <Spinner />
+        <ScreenSkeleton />
       </Screen>
     );
   }

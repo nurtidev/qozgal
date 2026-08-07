@@ -19,7 +19,7 @@ import {
   Hint,
   Button,
   Segmented,
-  Spinner,
+  ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
 import { useDates } from '@/i18n/dates';
@@ -223,7 +223,7 @@ export default function EntryPage() {
   if (!entry) {
     return (
       <Screen>
-        <Spinner />
+        <ScreenSkeleton />
       </Screen>
     );
   }

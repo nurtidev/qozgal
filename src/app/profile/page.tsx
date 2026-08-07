@@ -21,7 +21,7 @@ import {
   Segmented,
   RadioList,
   Field,
-  Spinner,
+  ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
 import type { Adjustment } from '@/lib/health/energy';
@@ -206,7 +206,7 @@ export default function ProfilePage() {
   if (!me?.profile) {
     return (
       <Screen>
-        <Spinner />
+        <ScreenSkeleton rows={2} />
       </Screen>
     );
   }

@@ -13,7 +13,7 @@ import {
   Button,
   CalorieRing,
   MacroBar,
-  Spinner,
+  ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
 
@@ -119,7 +119,7 @@ export default function DashboardPage() {
   if (!me || !day) {
     return (
       <Screen>
-        <Spinner />
+        <ScreenSkeleton ring rows={2} />
       </Screen>
     );
   }

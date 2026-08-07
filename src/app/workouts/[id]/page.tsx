@@ -18,7 +18,7 @@ import {
   Hint,
   Button,
   Field,
-  Spinner,
+  ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
 import { useDates } from '@/i18n/dates';
@@ -213,7 +213,7 @@ export default function WorkoutPage() {
   if (!workout) {
     return (
       <Screen>
-        <Spinner />
+        <ScreenSkeleton />
       </Screen>
     );
   }

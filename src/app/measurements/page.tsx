@@ -19,7 +19,7 @@ import {
   Hint,
   Button,
   Field,
-  Spinner,
+  ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
 import { calcLeanBodyMass } from '@/lib/health/composition';
@@ -219,7 +219,7 @@ export default function MeasurementsPage() {
   if (!me || !history) {
     return (
       <Screen>
-        <Spinner />
+        <ScreenSkeleton />
       </Screen>
     );
   }

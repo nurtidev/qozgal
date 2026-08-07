@@ -19,7 +19,7 @@ import {
   Button,
   RadioList,
   Segmented,
-  Spinner,
+  ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
 import { useDates } from '@/i18n/dates';
@@ -152,7 +152,7 @@ export default function InjuriesPage() {
   if (!injuries) {
     return (
       <Screen>
-        <Spinner />
+        <ScreenSkeleton rows={2} />
       </Screen>
     );
   }
