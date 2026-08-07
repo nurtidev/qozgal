@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import {
   api,
@@ -19,6 +20,7 @@ import {
   Spinner,
   ErrorNote,
 } from '@/components/ui';
+import { useDates } from '@/i18n/dates';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -45,20 +47,16 @@ interface Entry {
   items: Item[];
 }
 
-const MEAL_OPTIONS: { value: MealType; label: string }[] = [
-  { value: 'breakfast', label: 'Завтрак' },
-  { value: 'lunch', label: 'Обед' },
-  { value: 'dinner', label: 'Ужин' },
-  { value: 'snack', label: 'Перекус' },
-];
+const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
-const SOURCE_LABELS: Record<string, string> = {
-  photo: 'по фото',
-  text: 'по описанию',
-  manual: 'вручную',
-  repeat: 'повтор',
-  barcode: 'по штрихкоду',
-};
+/** Ключ перевода источника записи; неизвестный источник просто не подписываем */
+const SOURCE_KEYS = {
+  photo: 'sourcePhoto',
+  text: 'sourceText',
+  manual: 'sourceManual',
+  repeat: 'sourceRepeat',
+  barcode: 'sourceBarcode',
+} as const;
 
 /** Шаг кнопок ± — порции измеряются десятками граммов, единицы только мешают */
 const STEP_G = 10;
@@ -107,6 +105,11 @@ function toGrams(text: string): number | null {
 export default function EntryPage() {
   const router = useRouter();
   const { id: entryId } = useParams<{ id: string }>();
+  const t = useTranslations('entry');
+  const tc = useTranslations('common');
+  const meals = useTranslations('meals');
+  const tm = useTranslations('macros');
+  const dates = useDates();
 
   const [entry, setEntry] = useState<Entry | null>(null);
   const [mealType, setMealType] = useState<MealType>('lunch');
@@ -138,15 +141,9 @@ export default function EntryPage() {
       setRemoved([]);
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setMissing(true);
-      else {
-        setError(
-          e instanceof ApiError
-            ? e.message
-            : 'Не удалось загрузить запись. Проверьте связь.',
-        );
-      }
+      else setError(e instanceof ApiError ? e.message : t('loadFailed'));
     }
-  }, [entryId]);
+  }, [entryId, t]);
 
   useTelegramApp();
   useTelegramBack(leave);
@@ -166,12 +163,10 @@ export default function EntryPage() {
   if (missing) {
     return (
       <Screen>
-        <h1 className="text-xl font-semibold">Запись не найдена</h1>
-        <Hint>
-          Возможно, её уже удалили — или ссылка ведёт на чужой дневник.
-        </Hint>
+        <h1 className="text-xl font-semibold">{t('notFound')}</h1>
+        <Hint>{t('notFoundHint')}</Hint>
         <div className="mt-auto pt-4">
-          <Button onClick={() => router.replace('/')}>К дневнику</Button>
+          <Button onClick={() => router.replace('/')}>{t('toDiary')}</Button>
         </div>
       </Screen>
     );
@@ -181,7 +176,7 @@ export default function EntryPage() {
     return (
       <Screen>
         <ErrorNote>{error}</ErrorNote>
-        <Button onClick={load}>Попробовать снова</Button>
+        <Button onClick={load}>{tc('retry')}</Button>
       </Screen>
     );
   }
@@ -243,11 +238,7 @@ export default function EntryPage() {
       router.replace('/');
     } catch (e) {
       haptic('error');
-      setError(
-        e instanceof ApiError
-          ? e.message
-          : 'Не удалось сохранить. Попробуйте ещё раз.',
-      );
+      setError(e instanceof ApiError ? e.message : tc('saveFailed'));
       setSaving(false);
     }
   }
@@ -263,15 +254,12 @@ export default function EntryPage() {
       router.replace('/');
     } catch (e) {
       haptic('error');
-      setError(
-        e instanceof ApiError
-          ? e.message
-          : 'Не удалось удалить. Попробуйте ещё раз.',
-      );
+      setError(e instanceof ApiError ? e.message : t('deleteFailed'));
       setSaving(false);
     }
   }
 
+  const sourceKey = SOURCE_KEYS[entry.source as keyof typeof SOURCE_KEYS];
   const empty = kept.length === 0;
 
   // Удаление всегда идёт через второй тап — и с красной кнопки внизу,
@@ -280,38 +268,48 @@ export default function EntryPage() {
 
   const primaryLabel = empty
     ? armed
-      ? 'Точно удалить запись?'
-      : 'Удалить запись'
+      ? t('deleteConfirm')
+      : t('delete')
     : entry.status === 'confirmed'
-      ? 'Сохранить'
+      ? t('save')
       : entry.status === 'discarded'
-        ? 'Вернуть в дневник'
-        : 'Подтвердить';
+        ? t('restoreEntry')
+        : t('confirm');
 
   return (
     <Screen>
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">
-          {entry.status === 'pending' ? 'Проверьте разбор' : 'Запись'}
+          {entry.status === 'pending' ? t('checkTitle') : t('title')}
         </h1>
         <span className="text-sm text-[var(--tg-theme-hint-color)]">
-          {formatWhen(entry.consumedAt)}
-          {SOURCE_LABELS[entry.source] ? ` · ${SOURCE_LABELS[entry.source]}` : ''}
-          {entry.status === 'discarded' ? ' · отменена' : ''}
+          {dates.dayMonthTime(entry.consumedAt)}
+          {sourceKey ? ` · ${t(sourceKey)}` : ''}
+          {entry.status === 'discarded' ? ` · ${t('discarded')}` : ''}
         </span>
       </header>
 
-      <Segmented value={mealType} options={MEAL_OPTIONS} onChange={setMealType} />
+      <Segmented
+        value={mealType}
+        options={MEAL_TYPES.map((value) => ({ value, label: meals(value) }))}
+        onChange={setMealType}
+      />
 
       <Card className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">Итого</span>
+          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+            {t('total')}
+          </span>
           <span className="tabular text-2xl font-semibold">
-            {totals.kcal} ккал
+            {totals.kcal} {tc('kcal')}
           </span>
         </div>
         <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
-          Б {totals.proteinG} · Ж {totals.fatG} · У {totals.carbsG}
+          {tm('short', {
+            protein: totals.proteinG,
+            fat: totals.fatG,
+            carbs: totals.carbsG,
+          })}
         </span>
       </Card>
 
@@ -337,19 +335,9 @@ export default function EntryPage() {
         ))}
       </section>
 
-      {empty && (
-        <Hint>
-          Не осталось ни одной позиции — сохранять нечего, запись будет удалена
-          целиком.
-        </Hint>
-      )}
+      {empty && <Hint>{t('emptyHint')}</Hint>}
 
-      {entry.status === 'discarded' && !empty && (
-        <Hint>
-          Запись была отменена и в дневной итог не входит. Подтверждение вернёт
-          её обратно.
-        </Hint>
-      )}
+      {entry.status === 'discarded' && !empty && <Hint>{t('discardedHint')}</Hint>}
 
       <div className="mt-auto flex flex-col gap-2 pt-4">
         {error && <ErrorNote>{error}</ErrorNote>}
@@ -363,7 +351,7 @@ export default function EntryPage() {
         </Button>
 
         <Button variant="ghost" onClick={leave}>
-          Назад
+          {tc('back')}
         </Button>
 
         {!empty && (
@@ -371,7 +359,7 @@ export default function EntryPage() {
           // по-разному на платформах Telegram, а промахнуться по кнопке
           // удаления в списке из трёх штук — обычное дело
           <Button variant="danger" onClick={armDelete} disabled={saving}>
-            {armed ? 'Точно удалить запись?' : 'Удалить запись'}
+            {armed ? t('deleteConfirm') : t('delete')}
           </Button>
         )}
       </div>
@@ -396,6 +384,10 @@ function ItemRow({
   onRemove: () => void;
   onRestore: () => void;
 }) {
+  const t = useTranslations('entry');
+  const tc = useTranslations('common');
+  const tm = useTranslations('macros');
+
   if (removed) {
     return (
       <Card className="flex items-center justify-between gap-3">
@@ -407,7 +399,7 @@ function ItemRow({
           onClick={onRestore}
           className="shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-[var(--tg-theme-link-color)]"
         >
-          Вернуть
+          {t('restore')}
         </button>
       </Card>
     );
@@ -419,14 +411,19 @@ function ItemRow({
 
   const note =
     grams === null
-      ? { text: `Вес числом, от 0 до ${MAX_G} г`, bad: true }
+      ? { text: t('gramsRange', { max: MAX_G }), bad: true }
       : !known
-        ? { text: 'Продукта нет в справочнике — калорийность неизвестна', bad: false }
+        ? { text: t('unknownProduct'), bad: false }
         : item.confidence !== null && item.confidence < LOW_CONFIDENCE
-          ? { text: 'Модель не уверена в этой позиции — проверьте вес', bad: false }
+          ? { text: t('lowConfidence'), bad: false }
           : item.estimatedGrams !== null &&
               Math.abs(item.estimatedGrams - grams) >= 1
-            ? { text: `Модель оценила ${Math.round(item.estimatedGrams)} г`, bad: false }
+            ? {
+                text: t('estimated', {
+                  grams: Math.round(item.estimatedGrams),
+                }),
+                bad: false,
+              }
             : null;
 
   return (
@@ -434,13 +431,13 @@ function ItemRow({
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate font-medium">{item.name}</span>
         <span className="tabular shrink-0 text-sm">
-          {known && n ? `${n.kcal} ккал` : 'нет данных'}
+          {known && n ? `${n.kcal} ${tc('kcal')}` : tc('noData')}
         </span>
       </div>
 
       {known && n && (
         <span className="tabular text-xs text-[var(--tg-theme-hint-color)]">
-          Б {n.proteinG} · Ж {n.fatG} · У {n.carbsG}
+          {tm('short', { protein: n.proteinG, fat: n.fatG, carbs: n.carbsG })}
         </span>
       )}
 
@@ -456,7 +453,7 @@ function ItemRow({
             value={value}
             inputMode="decimal"
             onChange={(e) => onChange(e.target.value)}
-            aria-label={`Вес: ${item.name}`}
+            aria-label={t('itemWeight', { name: item.name })}
             className={`tabular min-h-12 w-full rounded-xl bg-[var(--tg-theme-bg-color)] px-4 pr-8 text-center text-base outline-none ${
               grams === null
                 ? 'ring-2 ring-[var(--tg-theme-destructive-text-color)]'
@@ -464,7 +461,7 @@ function ItemRow({
             }`}
           />
           <span className="pointer-events-none absolute right-3 text-sm text-[var(--tg-theme-hint-color)]">
-            г
+            {tc('g')}
           </span>
         </span>
 
@@ -477,7 +474,7 @@ function ItemRow({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={`Убрать: ${item.name}`}
+          aria-label={t('removeItem', { name: item.name })}
           className="min-h-12 w-10 shrink-0 rounded-xl text-lg text-[var(--tg-theme-hint-color)] active:opacity-60"
         >
           ✕
@@ -522,16 +519,4 @@ function StepButton({
       {label}
     </button>
   );
-}
-
-/** «7 августа, 14:30» — время берётся из часового пояса телефона */
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
 }

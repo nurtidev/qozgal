@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { api, ApiError, haptic, useTelegramApp } from '@/lib/telegram/client';
+import type { Adjustment } from '@/lib/health/energy';
 import {
   Screen,
   Card,
@@ -27,18 +29,18 @@ interface Plan {
   dailyDelta: number;
   effectiveWeeklyRateKg: number;
   macros: { proteinG: number; fatG: number; carbsG: number };
-  adjustments: string[];
+  adjustments: Adjustment[];
 }
 
-const ACTIVITY_OPTIONS: { value: Activity; label: string; hint: string }[] = [
-  { value: 'sedentary', label: 'Сидячий', hint: 'Работа за столом, без спорта' },
-  { value: 'light', label: 'Лёгкая', hint: '1–3 тренировки в неделю' },
-  { value: 'moderate', label: 'Средняя', hint: '3–5 тренировок в неделю' },
-  { value: 'high', label: 'Высокая', hint: '6–7 тренировок в неделю' },
-  { value: 'athlete', label: 'Очень высокая', hint: 'Две тренировки в день или физический труд' },
+const ACTIVITIES: Activity[] = [
+  'sedentary',
+  'light',
+  'moderate',
+  'high',
+  'athlete',
 ];
 
-const STEPS = ['Кто вы', 'Параметры', 'Образ жизни', 'Каркас', 'Цель'] as const;
+const STEPS = ['who', 'body', 'activity', 'frame', 'goal'] as const;
 
 /** Дата ровно N лет назад — границы выбора в поле даты рождения */
 function dateYearsAgo(years: number): string {
@@ -59,6 +61,8 @@ function calcAgeFrom(iso: string): number {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const t = useTranslations('onboarding');
+  const tc = useTranslations('common');
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +124,7 @@ export default function OnboardingPage() {
         if (e.fields?.birthDate) setStep(0);
         else if (e.fields?.heightCm || e.fields?.weightKg) setStep(1);
       } else {
-        setError('Не удалось сохранить. Попробуйте ещё раз.');
+        setError(tc('saveFailed'));
       }
     } finally {
       setSaving(false);
@@ -144,7 +148,7 @@ export default function OnboardingPage() {
         ))}
       </div>
 
-      <h1 className="text-2xl font-semibold">{STEPS[step]}</h1>
+      <h1 className="text-2xl font-semibold">{t(`steps.${STEPS[step]}`)}</h1>
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
@@ -154,12 +158,12 @@ export default function OnboardingPage() {
             value={sex}
             onChange={setSex}
             options={[
-              { value: 'male', label: 'Мужчина' },
-              { value: 'female', label: 'Женщина' },
+              { value: 'male', label: t('male') },
+              { value: 'female', label: t('female') },
             ]}
           />
           <Field
-            label="Дата рождения"
+            label={t('birthDate')}
             type="date"
             value={birthDate}
             error={fields.birthDate}
@@ -169,76 +173,72 @@ export default function OnboardingPage() {
             min={dateYearsAgo(100)}
             max={dateYearsAgo(14)}
             onChange={(e) => setBirthDate(e.target.value)}
-            hint={birthDate ? `${calcAgeFrom(birthDate)} лет` : 'Выберите дату'}
+            hint={
+              birthDate
+                ? t('age', { age: calcAgeFrom(birthDate) })
+                : t('pickDate')
+            }
           />
-          <Hint>
-            Пол и возраст входят в формулу основного обмена — без них норма
-            калорий получится неверной.
-          </Hint>
+          <Hint>{t('whoHint')}</Hint>
         </div>
       )}
 
       {step === 1 && (
         <div className="fade-in flex flex-col gap-4">
           <Field
-            label="Рост"
-            unit="см"
+            label={t('height')}
+            unit={tc('cm')}
             value={heightCm}
             error={fields.heightCm}
             placeholder="175"
             onChange={(e) => setHeightCm(e.target.value)}
           />
           <Field
-            label="Вес сегодня"
-            unit="кг"
+            label={t('weightToday')}
+            unit={tc('kg')}
             value={weightKg}
             error={fields.weightKg}
             placeholder="70"
             onChange={(e) => setWeightKg(e.target.value)}
           />
-          <Hint>
-            Взвешивайтесь утром натощак. Дальше приложение будет показывать
-            среднее за неделю: дневные колебания воды доходят до полутора
-            килограммов и полностью скрывают настоящий тренд.
-          </Hint>
+          <Hint>{t('bodyHint')}</Hint>
         </div>
       )}
 
       {step === 2 && (
         <div className="fade-in flex flex-col gap-4">
-          <RadioList value={activity} onChange={setActivity} options={ACTIVITY_OPTIONS} />
-          <Hint>
-            Учитывайте всю дневную активность, а не только зал. Если сомневаетесь
-            между двумя вариантами, берите тот, что ниже: завышенная активность
-            даёт завышенную норму и незаметно съедает дефицит.
-          </Hint>
+          <RadioList
+            value={activity}
+            onChange={setActivity}
+            options={ACTIVITIES.map((value) => ({
+              value,
+              label: t(`activity.${value}`),
+              hint: t(`activity.${value}Hint`),
+            }))}
+          />
+          <Hint>{t('activityHint')}</Hint>
         </div>
       )}
 
       {step === 3 && (
         <div className="fade-in flex flex-col gap-4">
           <Field
-            label="Обхват запястья"
-            unit="см"
+            label={t('wrist')}
+            unit={tc('cm')}
             value={wristCm}
             placeholder="17"
             onChange={(e) => setWristCm(e.target.value)}
-            hint="В самом узком месте, ниже косточки"
+            hint={t('wristHint')}
           />
           <Field
-            label="Обхват щиколотки"
-            unit="см"
+            label={t('ankle')}
+            unit={tc('cm')}
             value={ankleCm}
             placeholder="22"
             onChange={(e) => setAnkleCm(e.target.value)}
-            hint="Тоже в самом узком месте, над косточкой"
+            hint={t('ankleHint')}
           />
-          <Hint>
-            Эти два замера делаются один раз: там почти нет мышц и жира, поэтому
-            они показывают толщину костяка и не меняются ни от диеты, ни от
-            тренировок. На норму калорий не влияют — нужны только для оценки
-            телосложения. Можно пропустить.
-          </Hint>
+          <Hint>{t('frameHint')}</Hint>
         </div>
       )}
 
@@ -248,24 +248,22 @@ export default function OnboardingPage() {
             value={goalType}
             onChange={setGoalType}
             options={[
-              { value: 'lose', label: 'Снизить вес' },
-              { value: 'maintain', label: 'Удержать вес' },
-              { value: 'gain', label: 'Набрать массу' },
+              { value: 'lose', label: t('goalLose') },
+              { value: 'maintain', label: t('goalMaintain') },
+              { value: 'gain', label: t('goalGain') },
             ]}
           />
           {goalType && goalType !== 'maintain' && (
             <>
               <Field
-                label="Желаемый темп"
-                unit="кг/нед"
+                label={t('rate')}
+                unit={t('rateUnit')}
                 value={weeklyRate}
                 placeholder="0.5"
                 onChange={(e) => setWeeklyRate(e.target.value)}
               />
               <Hint>
-                {goalType === 'lose'
-                  ? 'Безопасный темп — до 1% массы тела в неделю. Если запросить больше, приложение урежет цифру и объяснит почему.'
-                  : 'Набирать быстрее 0.5 кг в неделю смысла мало: сверх этого прирост идёт преимущественно в жир.'}
+                {goalType === 'lose' ? t('loseHint') : t('gainHint')}
               </Hint>
             </>
           )}
@@ -278,16 +276,16 @@ export default function OnboardingPage() {
           disabled={!canContinue}
           loading={saving}
         >
-          {step === STEPS.length - 1 ? 'Рассчитать норму' : 'Дальше'}
+          {step === STEPS.length - 1 ? t('calculate') : tc('next')}
         </Button>
         {step > 0 && (
           <Button variant="ghost" onClick={() => setStep(step - 1)}>
-            Назад
+            {tc('back')}
           </Button>
         )}
         {step === 3 && (
           <Button variant="ghost" onClick={() => setStep(4)}>
-            Пропустить
+            {tc('skip')}
           </Button>
         )}
       </div>
@@ -298,24 +296,32 @@ export default function OnboardingPage() {
 /* ─────────────────────── Итог расчёта ──────────────────────────────── */
 
 function PlanSummary({ plan, onDone }: { plan: Plan; onDone: () => void }) {
+  const t = useTranslations('onboarding');
+  const tc = useTranslations('common');
+  const tm = useTranslations('macros');
+
   return (
     <Screen>
-      <h1 className="text-2xl font-semibold">Ваша норма</h1>
+      <h1 className="text-2xl font-semibold">{t('planTitle')}</h1>
 
       <Card className="flex flex-col items-center gap-1 py-6">
         <span className="tabular text-5xl font-semibold">{plan.kcalTarget}</span>
-        <span className="text-sm text-[var(--tg-theme-hint-color)]">ккал в день</span>
+        <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          {t('perDay')}
+        </span>
       </Card>
 
       <Card>
         <div className="grid grid-cols-3 gap-3 text-center">
           {[
-            ['Белки', plan.macros.proteinG],
-            ['Жиры', plan.macros.fatG],
-            ['Углеводы', plan.macros.carbsG],
+            [tm('protein'), plan.macros.proteinG],
+            [tm('fat'), plan.macros.fatG],
+            [tm('carbs'), plan.macros.carbsG],
           ].map(([label, value]) => (
             <div key={label as string} className="flex flex-col">
-              <span className="tabular text-xl font-medium">{value} г</span>
+              <span className="tabular text-xl font-medium">
+                {value} {tc('g')}
+              </span>
               <span className="text-xs text-[var(--tg-theme-hint-color)]">{label}</span>
             </div>
           ))}
@@ -323,14 +329,27 @@ function PlanSummary({ plan, onDone }: { plan: Plan; onDone: () => void }) {
       </Card>
 
       <Card className="flex flex-col gap-2 text-sm">
-        <Row label="Основной обмен" value={`${plan.bmr} ккал`} />
-        <Row label="Суточный расход" value={`${plan.tdee} ккал`} />
+        <Row label={t('bmr')} value={`${plan.bmr} ${tc('kcal')}`} />
+        <Row label={t('tdee')} value={`${plan.tdee} ${tc('kcal')}`} />
         <Row
-          label={plan.dailyDelta < 0 ? 'Дефицит' : plan.dailyDelta > 0 ? 'Профицит' : 'Баланс'}
-          value={`${plan.dailyDelta === 0 ? '—' : `${Math.abs(plan.dailyDelta)} ккал`}`}
+          label={
+            plan.dailyDelta < 0
+              ? t('deficit')
+              : plan.dailyDelta > 0
+                ? t('surplus')
+                : t('balance')
+          }
+          value={
+            plan.dailyDelta === 0
+              ? '—'
+              : `${Math.abs(plan.dailyDelta)} ${tc('kcal')}`
+          }
         />
         {plan.effectiveWeeklyRateKg > 0 && (
-          <Row label="Ожидаемый темп" value={`${plan.effectiveWeeklyRateKg} кг/нед`} />
+          <Row
+            label={t('expectedRate')}
+            value={`${plan.effectiveWeeklyRateKg} ${t('rateUnit')}`}
+          />
         )}
       </Card>
 
@@ -339,21 +358,19 @@ function PlanSummary({ plan, onDone }: { plan: Plan; onDone: () => void }) {
       {plan.adjustments.length > 0 && (
         <Card className="flex flex-col gap-2">
           {plan.adjustments.map((note) => (
-            <p key={note} className="text-sm leading-snug">
-              {note}
+            <p key={note.code} className="text-sm leading-snug">
+              {note.code === 'raisedToFloor'
+                ? t('adjust.raisedToFloor', { kcal: note.kcal })
+                : t(`adjust.${note.code}`)}
             </p>
           ))}
         </Card>
       )}
 
-      <Hint>
-        Расчёт по формуле Mifflin-St Jeor. После первых замеров обхватов
-        приложение перейдёт на формулу от сухой массы — она точнее, потому что
-        жировая ткань почти не тратит энергию.
-      </Hint>
+      <Hint>{t('planHint')}</Hint>
 
       <div className="mt-auto pt-4">
-        <Button onClick={onDone}>Начать вести дневник</Button>
+        <Button onClick={onDone}>{t('start')}</Button>
       </div>
     </Screen>
   );

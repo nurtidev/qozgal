@@ -162,8 +162,14 @@ describe('Онбординг', () => {
     });
 
     assert.equal(status, 200);
-    const plan = body.plan as { adjustments: string[]; effectiveWeeklyRateKg: number };
+    // Пояснения приходят кодами, а не готовыми фразами: текст живёт
+    // в словарях Mini App, сервер языка пользователя не знает
+    const plan = body.plan as {
+      adjustments: { code: string }[];
+      effectiveWeeklyRateKg: number;
+    };
     assert.ok(plan.adjustments.length > 0, 'ожидалось объяснение урезания');
+    assert.ok(plan.adjustments.every((a) => typeof a.code === 'string'));
     assert.ok(plan.effectiveWeeklyRateKg < 2);
   });
 

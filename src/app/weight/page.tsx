@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import {
   api,
@@ -20,6 +21,7 @@ import {
   Spinner,
   ErrorNote,
 } from '@/components/ui';
+import { useDates } from '@/i18n/dates';
 
 interface Point {
   date: string;
@@ -48,14 +50,18 @@ interface Me {
 /** Периоды строками: переключатель работает со строковыми значениями */
 type Days = '30' | '90' | '365';
 
-const PERIODS: { value: Days; label: string }[] = [
-  { value: '30', label: 'Месяц' },
-  { value: '90', label: '3 месяца' },
-  { value: '365', label: 'Год' },
+const PERIODS: { value: Days; key: 'periodMonth' | 'periodQuarter' | 'periodYear' }[] = [
+  { value: '30', key: 'periodMonth' },
+  { value: '90', key: 'periodQuarter' },
+  { value: '365', key: 'periodYear' },
 ];
 
 export default function WeightPage() {
   const router = useRouter();
+  const t = useTranslations('weight');
+  const tc = useTranslations('common');
+  const dates = useDates();
+
   useTelegramApp();
   useTelegramBack(useCallback(() => router.replace('/'), [router]));
 
@@ -88,13 +94,9 @@ export default function WeightPage() {
       // цифру на пару сотен граммов, а не набирает её с нуля
       setValue((prev) => prev || (profile.weight ? String(profile.weight.kg) : ''));
     } catch (e) {
-      setError(
-        e instanceof ApiError
-          ? e.message
-          : 'Не удалось загрузить историю. Проверьте связь.',
-      );
+      setError(e instanceof ApiError ? e.message : t('loadFailed'));
     }
-  }, [days, router]);
+  }, [days, router, t]);
 
   useEffect(() => {
     load();
@@ -111,7 +113,7 @@ export default function WeightPage() {
   async function save() {
     const kg = Number(value.replace(',', '.').trim());
     if (!Number.isFinite(kg) || kg < 30 || kg > 400) {
-      setFieldError('Вес от 30 до 400 кг');
+      setFieldError(t('range'));
       haptic('error');
       return;
     }
@@ -134,7 +136,7 @@ export default function WeightPage() {
         setError(e.message);
         setFieldError(e.fields?.weightKg);
       } else {
-        setError('Не удалось записать. Попробуйте ещё раз.');
+        setError(t('recordFailed'));
       }
     } finally {
       setSaving(false);
@@ -145,7 +147,7 @@ export default function WeightPage() {
     return (
       <Screen>
         <ErrorNote>{error}</ErrorNote>
-        <Button onClick={load}>Попробовать снова</Button>
+        <Button onClick={load}>{tc('retry')}</Button>
       </Screen>
     );
   }
@@ -164,10 +166,10 @@ export default function WeightPage() {
   return (
     <Screen>
       <header className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold">Вес</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         {latest && (
           <span className="text-sm text-[var(--tg-theme-hint-color)]">
-            {formatDate(latest.date)}
+            {dates.dayMonthShort(latest.date)}
           </span>
         )}
       </header>
@@ -182,12 +184,12 @@ export default function WeightPage() {
               {latest.average.toFixed(1)}
             </span>
             <span className="text-sm text-[var(--tg-theme-hint-color)]">
-              кг · среднее за неделю
+              {t('average')}
             </span>
           </div>
           <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
-            Последнее взвешивание {latest.raw} кг
-            {target ? ` · цель ${target} кг` : ''}
+            {t('last', { kg: latest.raw })}
+            {target !== null ? ` · ${t('target', { kg: target })}` : ''}
           </span>
           {change !== null && (
             // Отсчёт от первой точки ряда, а не от границы выбранного
@@ -195,43 +197,50 @@ export default function WeightPage() {
             // «за 3 месяца» приписало бы прогрессу лишний срок
             <span className="tabular mt-1 text-sm">
               {change === 0
-                ? `Без изменений с ${formatDate(series[0].date)}`
-                : `${change > 0 ? '+' : '−'}${Math.abs(change).toFixed(1)} кг с ${formatDate(series[0].date)}`}
+                ? t('unchanged', { date: dates.dayMonthShort(series[0].date) })
+                : t('change', {
+                    delta: `${change > 0 ? '+' : '−'}${Math.abs(change).toFixed(1)}`,
+                    date: dates.dayMonthShort(series[0].date),
+                  })}
             </span>
           )}
         </Card>
       ) : (
         <Card>
-          <Hint>
-            Первое взвешивание ещё не записано. Встаньте на весы утром натощак —
-            дальше приложение покажет тренд.
-          </Hint>
+          <Hint>{t('firstHint')}</Hint>
         </Card>
       )}
 
-      <Segmented value={days} options={PERIODS} onChange={setDays} />
+      <Segmented
+        value={days}
+        options={PERIODS.map((p) => ({ value: p.value, label: t(p.key) }))}
+        onChange={setDays}
+      />
 
       <Card className="flex flex-col gap-2">
         {series.length >= 2 ? (
           <>
             <WeightChart points={series} targetKg={target} />
             <div className="flex justify-between text-xs text-[var(--tg-theme-hint-color)]">
-              <span>{formatDate(series[0].date)}</span>
-              <span>{formatDate(series[series.length - 1].date)}</span>
+              <span>{dates.dayMonthShort(series[0].date)}</span>
+              <span>
+                {dates.dayMonthShort(series[series.length - 1].date)}
+              </span>
             </div>
           </>
         ) : (
-          <Hint>
-            Тренд появится со второго взвешивания: по одной точке линию не
-            построить.
-          </Hint>
+          <Hint>{t('needSecond')}</Hint>
         )}
       </Card>
 
       <Card className="flex flex-col gap-3">
         <Field
-          label={showDate ? `Вес за ${formatDate(date)}` : 'Вес сегодня'}
-          unit="кг"
+          label={
+            showDate
+              ? t('forDate', { date: dates.dayMonthShort(date) })
+              : t('today')
+          }
+          unit={tc('kg')}
           value={value}
           error={fieldError}
           placeholder="80"
@@ -240,33 +249,29 @@ export default function WeightPage() {
 
         {showDate && (
           <Field
-            label="Дата взвешивания"
+            label={t('date')}
             type="date"
             value={date}
             max={me.today}
             onChange={(e) => setDate(e.target.value)}
-            hint="Повторная запись за ту же дату заменит прежнюю"
+            hint={t('dateHint')}
           />
         )}
 
         <Button onClick={save} loading={saving}>
-          {saved ? 'Записано' : 'Записать'}
+          {saved ? t('recorded') : t('record')}
         </Button>
 
         {!showDate && (
           <Button variant="ghost" onClick={() => setShowDate(true)}>
-            Записать за другой день
+            {t('otherDay')}
           </Button>
         )}
       </Card>
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      <Hint>
-        Взвешивайтесь в одно и то же время — утром, натощак, до завтрака.
-        Сравнивать имеет смысл только средние: между вчера и сегодня разница
-        почти всегда про воду, а не про жир.
-      </Hint>
+      <Hint>{t('hint')}</Hint>
     </Screen>
   );
 }
@@ -288,6 +293,7 @@ function WeightChart({
   points: Point[];
   targetKg: number | null;
 }) {
+  const t = useTranslations('weight');
   const W = 320;
   const H = 120;
   const PAD = 10;
@@ -320,7 +326,7 @@ function WeightChart({
       width="100%"
       height={H}
       role="img"
-      aria-label="График веса"
+      aria-label={t('chartTitle')}
     >
       {targetKg !== null && (
         <g>
@@ -340,7 +346,7 @@ function WeightChart({
             fontSize="9"
             fill="var(--tg-theme-hint-color)"
           >
-            цель {targetKg}
+            {t('chartTarget', { kg: targetKg })}
           </text>
         </g>
       )}
@@ -382,13 +388,4 @@ function WeightChart({
       </text>
     </svg>
   );
-}
-
-function formatDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  if (!y || !m || !d) return iso;
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(y, m - 1, d));
 }

@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { api, ApiError, useTelegramApp } from '@/lib/telegram/client';
+import { useDates } from '@/i18n/dates';
 import {
   Screen,
   Card,
@@ -51,15 +53,12 @@ interface Day {
   totals: { kcal: number; proteinG: number; fatG: number; carbsG: number };
 }
 
-const MEAL_LABELS: Record<DayEntry['mealType'], string> = {
-  breakfast: 'Завтрак',
-  lunch: 'Обед',
-  dinner: 'Ужин',
-  snack: 'Перекус',
-};
-
 export default function DashboardPage() {
   const router = useRouter();
+  const t = useTranslations('dashboard');
+  const tc = useTranslations('common');
+  const tm = useTranslations('macros');
+  const dates = useDates();
   const [me, setMe] = useState<Me | null>(null);
   const [day, setDay] = useState<Day | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,11 +73,7 @@ export default function DashboardPage() {
       setMe(profile);
       setDay(await api<Day>('/api/day'));
     } catch (e) {
-      setError(
-        e instanceof ApiError
-          ? e.message
-          : 'Не удалось загрузить данные. Проверьте связь.',
-      );
+      setError(e instanceof ApiError ? e.message : tc('loadFailed'));
     }
   }, [router]);
 
@@ -92,7 +87,7 @@ export default function DashboardPage() {
     return (
       <Screen>
         <ErrorNote>{error}</ErrorNote>
-        <Button onClick={() => { setError(null); load(); }}>Попробовать снова</Button>
+        <Button onClick={() => { setError(null); load(); }}>{tc('retry')}</Button>
       </Screen>
     );
   }
@@ -114,10 +109,12 @@ export default function DashboardPage() {
     <Screen>
       <header className="flex items-baseline justify-between">
         <h1 className="text-xl font-semibold">
-          {me.user.firstName ? `Привет, ${me.user.firstName}` : 'Дневник'}
+          {me.user.firstName
+            ? t('greeting', { name: me.user.firstName })
+            : t('title')}
         </h1>
         <span className="text-sm text-[var(--tg-theme-hint-color)]">
-          {formatDate(day.date)}
+          {dates.dayMonth(day.date)}
         </span>
       </header>
 
@@ -129,19 +126,19 @@ export default function DashboardPage() {
 
           <Card className="flex flex-col gap-3">
             <MacroBar
-              label="Белки"
+              label={tm('protein')}
               value={day.totals.proteinG}
               target={me.goal.proteinTargetG}
               color="var(--accent-protein)"
             />
             <MacroBar
-              label="Жиры"
+              label={tm('fat')}
               value={day.totals.fatG}
               target={me.goal.fatTargetG}
               color="var(--accent-fat)"
             />
             <MacroBar
-              label="Углеводы"
+              label={tm('carbs')}
               value={day.totals.carbsG}
               target={me.goal.carbTargetG}
               color="var(--accent-carbs)"
@@ -150,14 +147,14 @@ export default function DashboardPage() {
         </>
       ) : (
         <Card>
-          <Hint>Цель не задана — норма калорий не рассчитана.</Hint>
+          <Hint>{t('noGoal')}</Hint>
         </Card>
       )}
 
       {pending.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
-            Ждут подтверждения
+            {t('pending')}
           </h2>
           {pending.map((entry) => (
             <EntryCard
@@ -171,15 +168,12 @@ export default function DashboardPage() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
-          Съедено сегодня
+          {t('eatenToday')}
         </h2>
 
         {confirmed.length === 0 ? (
           <Card>
-            <Hint>
-              Записей пока нет. Пришлите боту фотографию блюда или напишите
-              словами — например, «две сосиски и гречка».
-            </Hint>
+            <Hint>{t('empty')}</Hint>
           </Card>
         ) : (
           confirmed.map((entry) => (
@@ -194,12 +188,14 @@ export default function DashboardPage() {
 
       <section className="flex flex-col gap-2">
         <NavRow
-          caption="Вес"
-          title={me.weight ? `${me.weight.kg} кг` : 'не записан'}
+          caption={t('weight')}
+          title={
+            me.weight ? `${me.weight.kg} ${tc('kg')}` : t('weightEmpty')
+          }
           onOpen={() => router.push('/weight')}
         />
         <NavRow
-          title="Замеры тела"
+          title={t('measurements')}
           onOpen={() => router.push('/measurements')}
         />
       </section>
@@ -241,6 +237,9 @@ function EntryCard({
   entry: DayEntry;
   onOpen: () => void;
 }) {
+  const t = useTranslations('common');
+  const meals = useTranslations('meals');
+
   return (
     <button onClick={onOpen} className="w-full text-left">
       <Card
@@ -251,8 +250,10 @@ function EntryCard({
         }
       >
         <div className="flex items-baseline justify-between">
-          <span className="font-medium">{MEAL_LABELS[entry.mealType]}</span>
-          <span className="tabular text-sm">{entry.kcal} ккал</span>
+          <span className="font-medium">{meals(entry.mealType)}</span>
+          <span className="tabular text-sm">
+            {entry.kcal} {t('kcal')}
+          </span>
         </div>
         <ul className="mt-2 flex flex-col gap-1">
           {entry.items.map((item) => (
@@ -262,10 +263,10 @@ function EntryCard({
             >
               <span className="truncate pr-2">{item.name}</span>
               <span className="tabular shrink-0">
-                {item.grams} г
+                {item.grams} {t('g')}
                 {/* Позиция без нутриентов не должна выглядеть как нулевая
                     калорийность — это разные вещи */}
-                {!item.hasNutrition && ' · нет данных'}
+                {!item.hasNutrition && ` · ${t('noData')}`}
               </span>
             </li>
           ))}
@@ -273,12 +274,4 @@ function EntryCard({
       </Card>
     </button>
   );
-}
-
-function formatDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date(y, m - 1, d));
 }

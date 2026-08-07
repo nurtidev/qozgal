@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { I18nProvider } from '@/i18n/provider';
 
 export const metadata: Metadata = {
   title: 'Qozgal — дневник питания',
@@ -30,7 +31,9 @@ export default function RootLayout({
         <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>
       <body className="min-h-screen bg-[var(--tg-theme-bg-color)] text-[var(--tg-theme-text-color)]">
-        {children}
+        {/* Язык уточняется после гидратации: серверу пользователь неизвестен,
+            подпись Telegram приходит только в заголовке запроса к API */}
+        <I18nProvider>{children}</I18nProvider>
       </body>
     </html>
   );

@@ -87,14 +87,26 @@ export interface CalorieTargetInput {
   weeklyRateKg?: number;
 }
 
+/**
+ * Что пришлось урезать — стоит показать пользователю, а не молча подменить.
+ *
+ * Код, а не готовая фраза: сервер не знает языка интерфейса, тексты живут
+ * в словарях Mini App. Русская строка отсюда доехала бы до казахского
+ * экрана как есть.
+ */
+export type Adjustment =
+  | { code: 'deficitCapped' }
+  | { code: 'surplusCapped' }
+  | { code: 'raisedToBmr' }
+  | { code: 'raisedToFloor'; kcal: number };
+
 export interface CalorieTargetResult {
   kcal: number;
   /** Отрицательное — дефицит, положительное — профицит */
   dailyDelta: number;
   /** Реально достижимый темп после применения ограничений, кг/неделю */
   effectiveWeeklyRateKg: number;
-  /** Что пришлось урезать — стоит показать пользователю, а не молча подменить */
-  adjustments: string[];
+  adjustments: Adjustment[];
 }
 
 /**
@@ -112,7 +124,7 @@ export function calcCalorieTarget(
   input: CalorieTargetInput,
 ): CalorieTargetResult {
   const { tdee, bmr, sex, goalType, weeklyRateKg } = input;
-  const adjustments: string[] = [];
+  const adjustments: Adjustment[] = [];
 
   if (goalType === 'maintain') {
     return {
@@ -128,13 +140,11 @@ export function calcCalorieTarget(
 
   const cap = goalType === 'lose' ? tdee * MAX_DEFICIT_RATIO : tdee * MAX_SURPLUS_RATIO;
 
-  let delta = Math.min(requestedDelta, cap);
+  const delta = Math.min(requestedDelta, cap);
   if (delta < requestedDelta) {
-    adjustments.push(
-      goalType === 'lose'
-        ? 'Темп снижен: дефицит глубже 25% от суточного расхода ведёт к потере мышц'
-        : 'Темп снижен: профицит выше 20% уходит преимущественно в жир',
-    );
+    adjustments.push({
+      code: goalType === 'lose' ? 'deficitCapped' : 'surplusCapped',
+    });
   }
 
   let kcal = goalType === 'lose' ? tdee - delta : tdee + delta;
@@ -142,12 +152,12 @@ export function calcCalorieTarget(
   if (goalType === 'lose') {
     if (kcal < bmr) {
       kcal = bmr;
-      adjustments.push('Норма поднята до базового обмена — ниже опускаться нельзя');
+      adjustments.push({ code: 'raisedToBmr' });
     }
     const floor = ABSOLUTE_FLOOR[sex];
     if (kcal < floor) {
       kcal = floor;
-      adjustments.push(`Норма поднята до минимальных ${floor} ккал`);
+      adjustments.push({ code: 'raisedToFloor', kcal: floor });
     }
   }
 
@@ -235,7 +245,7 @@ export interface DailyPlan {
   dailyDelta: number;
   effectiveWeeklyRateKg: number;
   macros: MacroTargets;
-  adjustments: string[];
+  adjustments: Adjustment[];
 }
 
 /** Полный расчёт дневной нормы: обмен → расход → цель → БЖУ */

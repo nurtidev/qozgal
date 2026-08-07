@@ -1,6 +1,11 @@
 import { webkit, chromium, devices } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
-import { installTelegramStub, PHONE_VIEWPORT, type ColorScheme } from './lib/telegram-stub';
+import {
+  installTelegramStub,
+  DEFAULT_USER,
+  PHONE_VIEWPORT,
+  type ColorScheme,
+} from './lib/telegram-stub';
 
 /**
  * Снимает экран Mini App в браузере с подменённым мостом Telegram.
@@ -14,19 +19,26 @@ import { installTelegramStub, PHONE_VIEWPORT, type ColorScheme } from './lib/tel
  * вызов API выглядит на скриншоте как пустой блок, и без лога причину
  * не отличить от задуманной пустоты.
  *
+ * Язык интерфейса приложение берёт из language_code в подписи Telegram,
+ * поэтому казахская вёрстка проверяется флагом --kk: он подписывает
+ * initData казахоязычным пользователем, а не подменяет строки на месте.
+ *
  * Usage:
- *   tsx e2e/shot.ts <url> [--dark] [--chromium] [--out путь.png]
+ *   tsx e2e/shot.ts <url> [--dark] [--kk] [--chromium] [--out путь.png]
  */
 
 const args = process.argv.slice(2);
 const urlArg = args.find((a) => !a.startsWith('--'));
 if (!urlArg) {
-  console.error('usage: tsx e2e/shot.ts <url> [--dark] [--chromium] [--out файл.png]');
+  console.error(
+    'usage: tsx e2e/shot.ts <url> [--dark] [--kk] [--chromium] [--out файл.png]',
+  );
   process.exit(2);
 }
 const url: string = urlArg;
 
 const colorScheme: ColorScheme = args.includes('--dark') ? 'dark' : 'light';
+const language = args.includes('--kk') ? 'kk' : 'ru';
 const engine = args.includes('--chromium') ? chromium : webkit;
 const engineName = args.includes('--chromium') ? 'chromium' : 'webkit';
 
@@ -34,7 +46,7 @@ const outIndex = args.indexOf('--out');
 const outPath =
   outIndex >= 0 && args[outIndex + 1]
     ? args[outIndex + 1]
-    : `e2e/screenshots/${engineName}-${colorScheme}.png`;
+    : `e2e/screenshots/${engineName}-${colorScheme}-${language}.png`;
 
 async function main() {
   await mkdir(outPath.replace(/\/[^/]+$/, ''), { recursive: true });
@@ -43,7 +55,7 @@ async function main() {
   const context = await browser.newContext({
     ...devices['iPhone 13'],
     viewport: PHONE_VIEWPORT,
-    locale: 'ru-RU',
+    locale: language === 'kk' ? 'kk-KZ' : 'ru-RU',
     timezoneId: 'Asia/Almaty',
   });
 
@@ -65,7 +77,10 @@ async function main() {
     }
   });
 
-  await installTelegramStub(page, { colorScheme });
+  await installTelegramStub(page, {
+    colorScheme,
+    user: { ...DEFAULT_USER, language_code: language },
+  });
 
   const response = await page.goto(url, {
     waitUntil: 'networkidle',
@@ -74,7 +89,7 @@ async function main() {
 
   await page.screenshot({ path: outPath, fullPage: true });
 
-  console.log(`Движок:     ${engineName}, тема ${colorScheme}`);
+  console.log(`Движок:     ${engineName}, тема ${colorScheme}, язык ${language}`);
   console.log(`Ответ:      HTTP ${response?.status()}`);
   console.log(`Заголовок:  ${await page.title()}`);
   console.log(`Скриншот:   ${outPath}`);

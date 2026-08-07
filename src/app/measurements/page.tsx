@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import {
   api,
@@ -20,6 +21,7 @@ import {
   ErrorNote,
 } from '@/components/ui';
 import { calcLeanBodyMass } from '@/lib/health/composition';
+import { useDates } from '@/i18n/dates';
 
 interface Measurement {
   measuredOn: string;
@@ -52,15 +54,20 @@ const LIMITS = {
 
 type FieldName = keyof typeof LIMITS;
 
-const EXTRA: { name: FieldName; label: string; hint: string }[] = [
-  { name: 'chestCm', label: 'Грудь', hint: 'По самой широкой части, руки опущены' },
-  { name: 'bicepsCm', label: 'Бицепс', hint: 'Напряжённая рука, самое широкое место' },
-  { name: 'thighCm', label: 'Бедро', hint: 'На ладонь ниже паховой складки' },
-  { name: 'calfCm', label: 'Икра', hint: 'В самом широком месте' },
-];
+/** Необязательные обхваты: в расчёт не входят, нужны только для динамики */
+const EXTRA = [
+  { name: 'chestCm', label: 'chest', hint: 'chestHint' },
+  { name: 'bicepsCm', label: 'biceps', hint: 'bicepsHint' },
+  { name: 'thighCm', label: 'thigh', hint: 'thighHint' },
+  { name: 'calfCm', label: 'calf', hint: 'calfHint' },
+] as const;
 
 export default function MeasurementsPage() {
   const router = useRouter();
+  const t = useTranslations('measurements');
+  const tc = useTranslations('common');
+  const dates = useDates();
+
   useTelegramApp();
   useTelegramBack(useCallback(() => router.replace('/'), [router]));
 
@@ -106,13 +113,9 @@ export default function MeasurementsPage() {
         }
       }
     } catch (e) {
-      setError(
-        e instanceof ApiError
-          ? e.message
-          : 'Не удалось загрузить замеры. Проверьте связь.',
-      );
+      setError(e instanceof ApiError ? e.message : t('loadFailed'));
     }
-  }, [router]);
+  }, [router, t]);
 
   useEffect(() => {
     load();
@@ -145,7 +148,7 @@ export default function MeasurementsPage() {
       }
       const [min, max] = LIMITS[name];
       if (Number.isNaN(value) || value < min || value > max) {
-        bad[name] = `От ${min} до ${max} см`;
+        bad[name] = t('range', { min, max });
         continue;
       }
       body[name] = value;
@@ -154,10 +157,10 @@ export default function MeasurementsPage() {
     // Шея и талия входят в формулу процента жира, у женщин ещё и бёдра —
     // без них считать нечего. Проверка «не задано» не должна затирать
     // сообщение о диапазоне: 300 см на талии — это опечатка, а не пропуск
-    if (body.neckCm == null && !bad.neckCm) bad.neckCm = 'Нужен обхват шеи';
-    if (body.waistCm == null && !bad.waistCm) bad.waistCm = 'Нужен обхват талии';
+    if (body.neckCm == null && !bad.neckCm) bad.neckCm = t('needNeck');
+    if (body.waistCm == null && !bad.waistCm) bad.waistCm = t('needWaist');
     if (me.profile.sex === 'female' && body.hipCm == null && !bad.hipCm) {
-      bad.hipCm = 'Для женщин обхват бёдер входит в формулу';
+      bad.hipCm = t('needHip');
     }
 
     if (Object.keys(bad).length) {
@@ -185,7 +188,7 @@ export default function MeasurementsPage() {
         setError(e.message);
         setFields(e.fields ?? {});
       } else {
-        setError('Не удалось сохранить. Попробуйте ещё раз.');
+        setError(tc('saveFailed'));
       }
     } finally {
       setSaving(false);
@@ -196,7 +199,7 @@ export default function MeasurementsPage() {
     return (
       <Screen>
         <ErrorNote>{error}</ErrorNote>
-        <Button onClick={load}>Попробовать снова</Button>
+        <Button onClick={load}>{tc('retry')}</Button>
       </Screen>
     );
   }
@@ -228,10 +231,10 @@ export default function MeasurementsPage() {
   return (
     <Screen>
       <header className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold">Замеры тела</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         {last && (
           <span className="text-sm text-[var(--tg-theme-hint-color)]">
-            {formatDate(last.measuredOn)}
+            {dates.dayMonthShort(last.measuredOn)}
           </span>
         )}
       </header>
@@ -245,33 +248,30 @@ export default function MeasurementsPage() {
                   {last.bodyFatPct}%
                 </span>
                 <span className="text-sm text-[var(--tg-theme-hint-color)]">
-                  жира
+                  {t('fat')}
                 </span>
               </div>
-              {lean !== null && (
+              {lean !== null && weightKg !== null && (
                 <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
-                  Сухая масса {lean} кг при весе {weightKg} кг
+                  {t('lean', { lean, weight: weightKg })}
                 </span>
               )}
             </>
           ) : (
-            <Hint>
-              Процент жира по прошлым обхватам не рассчитан — формула их не
-              приняла.
-            </Hint>
+            <Hint>{t('noFat')}</Hint>
           )}
 
           {previous && (fatChange !== null || waistChange !== null) && (
             <span className="tabular mt-1 text-sm">
               {[
-                fatChange !== null &&
-                  `жир ${signed(fatChange)}%`,
-                waistChange !== null && `талия ${signed(waistChange)} см`,
+                fatChange !== null && t('changeFat', { delta: signed(fatChange) }),
+                waistChange !== null &&
+                  t('changeWaist', { delta: signed(waistChange) }),
               ]
                 .filter(Boolean)
                 .join(' · ')}{' '}
               <span className="text-[var(--tg-theme-hint-color)]">
-                с {formatDate(previous.measuredOn)}
+                {t('since', { date: dates.dayMonthShort(previous.measuredOn) })}
               </span>
             </span>
           )}
@@ -280,80 +280,79 @@ export default function MeasurementsPage() {
 
       <Card className="flex flex-col gap-3">
         <Field
-          label="Шея"
-          unit="см"
+          label={t('neck')}
+          unit={tc('cm')}
           value={values.neckCm ?? ''}
           error={fields.neckCm}
           placeholder="38"
           onChange={(e) => setValues({ ...values, neckCm: e.target.value })}
-          hint="Под кадыком, сантиметр лежит горизонтально"
+          hint={t('neckHint')}
         />
         <Field
-          label="Талия"
-          unit="см"
+          label={t('waist')}
+          unit={tc('cm')}
           value={values.waistCm ?? ''}
           error={fields.waistCm}
           placeholder="85"
           onChange={(e) => setValues({ ...values, waistCm: e.target.value })}
-          hint="На уровне пупка, живот не втягивать"
+          hint={t('waistHint')}
         />
         <Field
-          label={female ? 'Бёдра' : 'Бёдра (не обязательно)'}
-          unit="см"
+          label={female ? t('hip') : t('hipOptional')}
+          unit={tc('cm')}
           value={values.hipCm ?? ''}
           error={fields.hipCm}
           placeholder="95"
           onChange={(e) => setValues({ ...values, hipCm: e.target.value })}
-          hint="По самой широкой части ягодиц"
+          hint={t('hipHint')}
         />
 
         {showExtra ? (
           EXTRA.map((f) => (
             <Field
               key={f.name}
-              label={f.label}
-              unit="см"
+              label={t(f.label)}
+              unit={tc('cm')}
               value={values[f.name] ?? ''}
               error={fields[f.name]}
               onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
               // Подсказку по технике держим, пока поле пустое: она нужна
               // на первом замере, а на повторных четыре строки инструкций
               // превращают форму в стену текста
-              hint={values[f.name] ? undefined : f.hint}
+              hint={values[f.name] ? undefined : t(f.hint)}
             />
           ))
         ) : (
           <Button variant="ghost" onClick={() => setShowExtra(true)}>
-            Добавить грудь, бицепс, бедро и икру
+            {t('addExtra')}
           </Button>
         )}
 
         <Button onClick={save} loading={saving}>
-          {saved ? 'Сохранено' : 'Сохранить замеры'}
+          {saved ? t('saved') : t('save')}
         </Button>
       </Card>
 
       {error && <ErrorNote>{error}</ErrorNote>}
       {note && <ErrorNote>{note}</ErrorNote>}
 
-      <Hint>
-        Процент жира считается по методу US Navy: он даёт ±3–4% против
-        лабораторного взвешивания, поэтому смотреть стоит на изменение, а не на
-        саму цифру. Мерьте утром, до еды, тем же сантиметром и в тех же местах —
-        иначе разница между замерами будет про технику, а не про тело.
-      </Hint>
+      <Hint>{t('hint')}</Hint>
 
       {history.length > 1 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
-            История
+            {t('history')}
           </h2>
           {history.slice(0, 10).map((m) => (
             <Card key={m.measuredOn} className="flex items-baseline justify-between">
-              <span className="text-sm">{formatDate(m.measuredOn)}</span>
+              <span className="text-sm">
+                {dates.dayMonthShort(m.measuredOn)}
+              </span>
               <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
-                {m.bodyFatPct != null ? `${m.bodyFatPct}% жира · ` : ''}
-                талия {m.waistCm} см
+                {m.bodyFatPct != null
+                  ? `${t('historyFat', { pct: m.bodyFatPct })} · `
+                  : ''}
+                {t('historyWaist', { waist: m.waistCm })}
               </span>
             </Card>
           ))}
@@ -367,13 +366,4 @@ export default function MeasurementsPage() {
 function signed(value: number): string {
   if (value === 0) return '±0';
   return `${value > 0 ? '+' : '−'}${Math.abs(value)}`;
-}
-
-function formatDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  if (!y || !m || !d) return iso;
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(y, m - 1, d));
 }

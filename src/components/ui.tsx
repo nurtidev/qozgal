@@ -1,6 +1,8 @@
 'use client';
 
 import { type ReactNode, type InputHTMLAttributes } from 'react';
+import { useTranslations } from 'next-intl';
+
 import { haptic } from '@/lib/telegram/client';
 
 /* ──────────────────────────── Оболочка ─────────────────────────────── */
@@ -54,6 +56,8 @@ export function Button({
   disabled?: boolean;
   loading?: boolean;
 }) {
+  const t = useTranslations('common');
+
   const styles = {
     primary:
       'bg-[var(--tg-theme-button-color)] text-[var(--tg-theme-button-text-color)]',
@@ -73,7 +77,7 @@ export function Button({
       // Минимум 48 px по высоте: пальцем в мелкую кнопку не попасть
       className={`min-h-12 w-full rounded-xl px-4 text-base font-medium transition-opacity active:opacity-70 disabled:opacity-40 ${styles}`}
     >
-      {loading ? 'Секунду…' : children}
+      {loading ? t('saving') : children}
     </button>
   );
 }
@@ -220,6 +224,7 @@ export function MacroBar({
   target: number;
   color: string;
 }) {
+  const t = useTranslations('common');
   const ratio = target > 0 ? Math.min(value / target, 1.5) : 0;
   const over = value > target;
 
@@ -229,7 +234,10 @@ export function MacroBar({
         <span className="text-[var(--tg-theme-hint-color)]">{label}</span>
         <span className="tabular">
           {Math.round(value)}
-          <span className="text-[var(--tg-theme-hint-color)]"> / {Math.round(target)} г</span>
+          <span className="text-[var(--tg-theme-hint-color)]">
+            {' '}
+            / {Math.round(target)} {t('g')}
+          </span>
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--tg-theme-bg-color)]">
@@ -253,6 +261,7 @@ export function CalorieRing({
   eaten: number;
   target: number;
 }) {
+  const t = useTranslations('ring');
   const size = 176;
   const stroke = 12;
   const radius = (size - stroke) / 2;
@@ -296,10 +305,10 @@ export function CalorieRing({
           {Math.abs(Math.round(left))}
         </span>
         <span className="mt-1 text-sm text-[var(--tg-theme-hint-color)]">
-          {left >= 0 ? 'осталось' : 'перебор'}
+          {left >= 0 ? t('left') : t('over')}
         </span>
         <span className="tabular mt-2 text-xs text-[var(--tg-theme-hint-color)]">
-          {Math.round(eaten)} из {Math.round(target)} ккал
+          {t('outOf', { eaten: Math.round(eaten), target: Math.round(target) })}
         </span>
       </div>
     </div>
