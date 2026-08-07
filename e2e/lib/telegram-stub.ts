@@ -178,6 +178,22 @@ export async function installTelegramStub(
 
   const initData = signInitData(user, botToken);
 
+  /**
+   * Настоящий telegram-web-app.js подключён в <head> приложения и при
+   * загрузке присваивает window.Telegram заново. Вне клиента Telegram он
+   * собирает WebApp с пустым initData — и затирает подписанную заглушку,
+   * поставленную до разбора документа. Экран после этого показывает
+   * «Приложение открыто вне Telegram», хотя в приложении всё исправно.
+   * Поэтому скрипт подменяется пустым: мост в браузере даёт заглушка.
+   */
+  await page.route(/telegram-web-app\.js/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/javascript',
+      body: '/* заменён заглушкой e2e/lib/telegram-stub.ts */',
+    }),
+  );
+
   await page.addInitScript({
     content: buildStubScript(initData, user, colorScheme, THEMES[colorScheme]),
   });
