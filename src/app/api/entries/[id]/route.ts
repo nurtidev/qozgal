@@ -5,6 +5,7 @@ import { route, parseBody } from '@/lib/api';
 import { db } from '@/db';
 import { foodEntries, foodItems, products } from '@/db/schema';
 import { scaleToPortion } from '@/lib/nutrition/resolve';
+import { clearInlineKeyboard } from '@/lib/telegram/bot-api';
 
 type Params = { id: string };
 
@@ -160,6 +161,13 @@ export const PATCH = route<Params>(async ({ session, request, params, t }) => {
     }
   });
 
+  // Статус поменялся — под карточкой в чате больше нечего нажимать.
+  // Кнопки гасим после транзакции: неудача в Telegram не должна
+  // откатывать уже сохранённую правку.
+  if (body.status && entry.botChatId && entry.botMessageId) {
+    await clearInlineKeyboard(entry.botChatId, entry.botMessageId);
+  }
+
   const items = await db
     .select()
     .from(foodItems)
@@ -192,10 +200,20 @@ export const DELETE = route<Params>(async ({ session, params, t }) => {
         eq(foodEntries.userId, session.user.id),
       ),
     )
-    .returning({ id: foodEntries.id });
+    .returning({
+      id: foodEntries.id,
+      botChatId: foodEntries.botChatId,
+      botMessageId: foodEntries.botMessageId,
+    });
 
   if (deleted.length === 0) {
     return Response.json({ error: t('errors.entryNotFound') }, { status: 404 });
+  }
+
+  // Записи больше нет — кнопки под карточкой в чате ведут в никуда
+  const [gone] = deleted;
+  if (gone.botChatId && gone.botMessageId) {
+    await clearInlineKeyboard(gone.botChatId, gone.botMessageId);
   }
 
   return Response.json({ ok: true });

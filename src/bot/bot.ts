@@ -338,6 +338,10 @@ async function handleRecognition(
     rawInput: request.rawInput,
     aiModel: outcome.meta.model,
     aiLatencyMs: outcome.meta.latencyMs,
+    // Карточка уедет в это же сообщение — запоминаем его, чтобы Mini App
+    // могло погасить кнопки после подтверждения
+    botChatId: chatId,
+    botMessageId: statusMessageId,
   });
 
   const [totals, goal] = await Promise.all([

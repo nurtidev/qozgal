@@ -61,6 +61,7 @@ export default function DashboardPage() {
   const dates = useDates();
   const [me, setMe] = useState<Me | null>(null);
   const [day, setDay] = useState<Day | null>(null);
+  const [date, setDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -71,17 +72,40 @@ export default function DashboardPage() {
         return;
       }
       setMe(profile);
-      setDay(await api<Day>('/api/day'));
+      // «Сегодня» берём с сервера, в часовом поясе пользователя: по часам
+      // телефона в поездке дневник открывался бы на завтрашнем пустом дне
+      setDate((prev) => prev ?? profile.today);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : tc('loadFailed'));
     }
-  }, [router]);
+  }, [router, tc]);
 
   useTelegramApp();
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // День перезагружается при каждом шаге по датам — отдельно от профиля,
+  // чтобы листание не дёргало /api/me
+  useEffect(() => {
+    if (!date) return;
+    let stale = false;
+    api<Day>(`/api/day?date=${date}`)
+      .then((loaded) => {
+        if (!stale) setDay(loaded);
+      })
+      .catch((e) => {
+        if (!stale) {
+          setError(e instanceof ApiError ? e.message : tc('loadFailed'));
+        }
+      });
+    // Быстрое листание оставляет запросы в полёте: ответ на позавчера,
+    // пришедший последним, показал бы чужой день
+    return () => {
+      stale = true;
+    };
+  }, [date, tc]);
 
   if (error) {
     return (
@@ -104,18 +128,44 @@ export default function DashboardPage() {
   // иначе разбор, оставленный без подтверждения, просто пропадал бы из виду
   const pending = day.entries.filter((e) => e.status === 'pending');
   const confirmed = day.entries.filter((e) => e.status === 'confirmed');
+  const isToday = day.date === me.today;
 
   return (
     <Screen>
-      <header className="flex items-baseline justify-between">
+      <header className="flex flex-col gap-3">
         <h1 className="text-xl font-semibold">
           {me.user.firstName
             ? t('greeting', { name: me.user.firstName })
             : t('title')}
         </h1>
-        <span className="text-sm text-[var(--tg-theme-hint-color)]">
-          {dates.dayMonth(day.date)}
-        </span>
+
+        <div className="flex items-center justify-between gap-2">
+          <DayStep label="‹" title={t('prevDay')} onClick={() => setDate(shiftDate(day.date, -1))} />
+          <button
+            type="button"
+            // Тап по дате возвращает на сегодня — короче, чем отщёлкивать
+            // назад по одному дню после прогулки по неделе
+            onClick={() => setDate(me.today)}
+            className="flex flex-col items-center"
+          >
+            <span className="text-base font-medium">
+              {isToday ? t('today') : dates.dayMonth(day.date)}
+            </span>
+            {!isToday && (
+              <span className="text-xs text-[var(--tg-theme-link-color)]">
+                {t('backToToday')}
+              </span>
+            )}
+          </button>
+          <DayStep
+            label="›"
+            title={t('nextDay')}
+            // Вперёд дальше сегодняшнего дня ходить некуда: еды из будущего
+            // в дневнике не бывает
+            disabled={isToday}
+            onClick={() => setDate(shiftDate(day.date, 1))}
+          />
+        </div>
       </header>
 
       {me.goal ? (
@@ -168,12 +218,12 @@ export default function DashboardPage() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
-          {t('eatenToday')}
+          {isToday ? t('eatenToday') : t('eatenOn')}
         </h2>
 
         {confirmed.length === 0 ? (
           <Card>
-            <Hint>{t('empty')}</Hint>
+            <Hint>{isToday ? t('empty') : t('emptyDay')}</Hint>
           </Card>
         ) : (
           confirmed.map((entry) => (
@@ -198,9 +248,50 @@ export default function DashboardPage() {
           title={t('measurements')}
           onOpen={() => router.push('/measurements')}
         />
+        <NavRow
+          title={t('profile')}
+          caption={me.goal ? `${me.goal.kcalTarget} ${tc('kcal')}` : undefined}
+          onOpen={() => router.push('/profile')}
+        />
       </section>
     </Screen>
   );
+}
+
+/** Шаг по дням. Крупная зона нажатия: стрелка сама по себе слишком мелкая */
+function DayStep({
+  label,
+  title,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="min-h-11 w-11 shrink-0 rounded-xl bg-[var(--tg-theme-secondary-bg-color)] text-lg active:opacity-70 disabled:opacity-30"
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Соседний день. Дата собирается по частям — Date из строки берёт UTC */
+function shiftDate(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d + days);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
 }
 
 /** Строка-переход в раздел: название, текущее значение над ним и стрелка */

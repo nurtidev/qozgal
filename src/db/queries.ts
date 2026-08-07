@@ -96,6 +96,9 @@ export interface CreateEntryInput {
   rawInput?: string;
   aiModel?: string;
   aiLatencyMs?: number;
+  /** Сообщение бота с карточкой — по нему приложение гасит кнопки */
+  botChatId?: number;
+  botMessageId?: number;
 }
 
 /**
@@ -120,6 +123,8 @@ export async function createPendingEntry(
         status: 'pending',
         photoUrl: input.photoUrl ?? null,
         rawInput: input.rawInput ?? null,
+        botChatId: input.botChatId ?? null,
+        botMessageId: input.botMessageId ?? null,
         aiModel: input.aiModel ?? null,
         aiRawResponse: input.recognition ?? null,
         aiLatencyMs: input.aiLatencyMs ?? null,
