@@ -18,7 +18,6 @@ import { conflictsFor } from '@/lib/health/injury';
 import {
   buildProgram,
   levelFromActivity,
-  type Place,
   type SkippedSlot,
 } from '@/lib/health/program';
 
@@ -197,7 +196,7 @@ export const POST = route(async ({ session, request, t }) => {
   const level = levelFromActivity(profile.activityLevel);
   const program = buildProgram({
     daysPerWeek: body.daysPerWeek,
-    place: body.place as Place,
+    place: body.place,
     // Цель на момент сборки: сменив её, человек пересоберёт программу —
     // подходы и повторы зависят от того, набирает он или снижает вес
     goal: goal?.type ?? 'maintain',
