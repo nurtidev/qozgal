@@ -32,6 +32,12 @@ interface Workout {
   volumeKg: number;
 }
 
+interface Program {
+  daysPerWeek: number;
+  nextDayIndex: number;
+  days: { id: string; dayIndex: number; focus: string }[];
+}
+
 /**
  * Журнал тренировок.
  *
@@ -43,12 +49,14 @@ export default function WorkoutsPage() {
   const router = useRouter();
   const t = useTranslations('workouts');
   const tc = useTranslations('common');
+  const tp = useTranslations('program');
   const dates = useDates();
 
   useTelegramApp();
   useTelegramBack(useCallback(() => router.replace('/'), [router]));
 
   const [workouts, setWorkouts] = useState<Workout[] | null>(null);
+  const [program, setProgram] = useState<Program | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +69,14 @@ export default function WorkoutsPage() {
       setError(e instanceof ApiError ? e.message : tc('loadFailed'));
     }
   }, [tc]);
+
+  // Программа грузится отдельно и молча: без неё журнал работает как прежде,
+  // и ронять из-за неё экран незачем
+  useEffect(() => {
+    api<{ program: Program | null }>('/api/program')
+      .then((data) => setProgram(data.program))
+      .catch(() => setProgram(null));
+  }, []);
 
   useEffect(() => {
     load();
@@ -114,6 +130,26 @@ export default function WorkoutsPage() {
   return (
     <Screen>
       <h1 className="text-xl font-semibold">{t('title')}</h1>
+
+      {/* Программа стоит выше журнала: она отвечает на вопрос «что делать
+          сегодня», а журнал — на вопрос «что я уже сделал» */}
+      <button
+        type="button"
+        onClick={() => router.push('/program')}
+        className="w-full text-left"
+      >
+        <Card className="flex items-center justify-between gap-3">
+          <span className="flex flex-col">
+            <span className="text-sm text-[var(--tg-theme-hint-color)]">
+              {program ? t('planNext', { day: nextDayLabel(program, tp) }) : t('planNone')}
+            </span>
+            <span className="text-lg font-medium">
+              {program ? t('planOpen') : t('planBuild')}
+            </span>
+          </span>
+          <span className="text-lg text-[var(--tg-theme-hint-color)]">›</span>
+        </Card>
+      </button>
 
       {workouts.length > 0 && (
         <Card className="flex items-baseline justify-between">
@@ -173,6 +209,16 @@ export default function WorkoutsPage() {
       <Hint>{t('caloriesHint')}</Hint>
     </Screen>
   );
+}
+
+/** Подпись следующего дня программы: «День 2 · Тяговый» */
+function nextDayLabel(
+  program: Program,
+  tp: ReturnType<typeof useTranslations<'program'>>,
+): string {
+  const day = program.days.find((d) => d.dayIndex === program.nextDayIndex);
+  if (!day) return tp('day', { index: program.nextDayIndex });
+  return `${tp('day', { index: day.dayIndex })} · ${tp(`focus.${day.focus}` as 'focus.push')}`;
 }
 
 /** Дата не старше N дней. Разбор по частям — Date из строки берёт UTC */

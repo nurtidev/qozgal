@@ -10,9 +10,15 @@ import {
   foodEntries,
   foodItems,
   products,
+  injuries,
+  exercises,
+  workoutPlans,
+  planDays,
+  planExercises,
 } from '@/db/schema';
 import { scaleToPortion } from '@/lib/nutrition/resolve';
 import { calcBodyFatPct } from '@/lib/health/composition';
+import { buildProgram } from '@/lib/health/program';
 import { DEFAULT_USER } from './lib/telegram-stub';
 
 /**
@@ -108,6 +114,7 @@ async function main() {
 
   await seedWeight(user.id);
   await seedMeasurements(user.id);
+  await seedProgram(user.id);
 
   // Позиция со ссылкой на справочник — на ней видно, что правка граммовки
   // пересчитывается от карточки продукта, а не от снапшота
@@ -248,6 +255,95 @@ async function seedMeasurements(userId: string) {
         target: [bodyMeasurements.userId, bodyMeasurements.measuredOn],
         set: { neckCm: row.neckCm, waistCm: row.waistCm, bodyFatPct },
       });
+  }
+}
+
+/**
+ * Программа тренировок и одно ограничение.
+ *
+ * Ограничение здесь не для красоты: без активной травмы экран программы
+ * показывает благополучный случай, а проверять надо как раз обратный —
+ * помеченные упражнения и слоты, для которых замены не нашлось. Колено
+ * «беспокоит» даёт ровно это: в ногах чистой замены нет, и движение
+ * остаётся с пометкой.
+ *
+ * Программа собирается той же функцией, что и в API, а не переписанной
+ * копией: иначе на скриншотах проверялась бы вторая реализация, которой
+ * в приложении нет.
+ */
+async function seedProgram(userId: string) {
+  // Состояние задаётся, а не дописывается: травма, оставшаяся от прошлой
+  // ручной проверки, меняет подбор — и скриншот показывает уже не то,
+  // что задумано, а историю локальной базы
+  await db.delete(injuries).where(eq(injuries.userId, userId));
+  await db.insert(injuries).values({
+    userId,
+    area: 'knee',
+    severity: 'watch',
+    startedOn: daysAgo(30),
+  });
+
+  await db.delete(workoutPlans).where(eq(workoutPlans.userId, userId));
+
+  const active = await db
+    .select({ area: injuries.area, severity: injuries.severity })
+    .from(injuries)
+    .where(eq(injuries.userId, userId));
+
+  const catalog = await db
+    .select({
+      id: exercises.id,
+      nameRu: exercises.nameRu,
+      pattern: exercises.pattern,
+      equipment: exercises.equipment,
+      loadsAreas: exercises.loadsAreas,
+    })
+    .from(exercises);
+
+  const program = buildProgram({
+    daysPerWeek: 4,
+    place: 'gym',
+    goal: 'lose',
+    level: 'regular',
+    exercises: catalog,
+    injuries: active,
+  });
+
+  const [created] = await db
+    .insert(workoutPlans)
+    .values({
+      userId,
+      title: `Программа на ${program.daysPerWeek} дн/нед`,
+      daysPerWeek: program.daysPerWeek,
+      place: 'gym',
+      goalType: 'lose',
+      level: 'regular',
+      skipped: program.skipped,
+      startsOn: daysAgo(7),
+    })
+    .returning({ id: workoutPlans.id });
+
+  for (const day of program.days) {
+    const [saved] = await db
+      .insert(planDays)
+      .values({ planId: created.id, dayIndex: day.dayIndex, focus: day.focus })
+      .returning({ id: planDays.id });
+
+    if (day.exercises.length === 0) continue;
+
+    await db.insert(planExercises).values(
+      day.exercises.map((planned, index) => ({
+        dayId: saved.id,
+        exerciseId: planned.exerciseId,
+        sortOrder: index,
+        pattern: planned.pattern,
+        sets: planned.sets,
+        repMin: planned.repMin,
+        repMax: planned.repMax,
+        durationMin: planned.durationMin,
+        restSec: planned.restSec,
+      })),
+    );
   }
 }
 

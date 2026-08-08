@@ -3,7 +3,13 @@ import { and, eq, gte, desc, inArray } from 'drizzle-orm';
 
 import { route, parseBody, dateSchema } from '@/lib/api';
 import { db } from '@/db';
-import { workoutSessions, workoutSets, exercises } from '@/db/schema';
+import {
+  workoutSessions,
+  workoutSets,
+  exercises,
+  planDays,
+  workoutPlans,
+} from '@/db/schema';
 import { localDate } from '@/db/queries';
 import { toLocale } from '@/i18n/messages';
 import { setVolume } from '@/lib/health/workout';
@@ -25,11 +31,36 @@ const postSchema = z.object({
   performedOn: dateSchema.optional(),
   durationMin: z.number().int().min(1).max(600).optional(),
   note: z.string().max(500).optional(),
+  /** День активной программы, если тренировка идёт по плану */
+  planDayId: z.string().uuid().optional(),
 });
 
-export const POST = route(async ({ session, request }) => {
+export const POST = route(async ({ session, request, t }) => {
   const body = await parseBody(request, postSchema);
   const { user } = session;
+
+  // День программы приходит из клиента, поэтому проверяется владение:
+  // подставив чужой uuid, можно было бы привязать свою тренировку
+  // к чужому плану и заодно узнать, что он существует
+  let plan: { planId: string; planDayId: string } | null = null;
+  if (body.planDayId) {
+    const [day] = await db
+      .select({ planId: planDays.planId, dayId: planDays.id })
+      .from(planDays)
+      .innerJoin(workoutPlans, eq(workoutPlans.id, planDays.planId))
+      .where(
+        and(eq(planDays.id, body.planDayId), eq(workoutPlans.userId, user.id)),
+      )
+      .limit(1);
+
+    if (!day) {
+      return Response.json(
+        { error: t('errors.programNotFound') },
+        { status: 404 },
+      );
+    }
+    plan = { planId: day.planId, planDayId: day.dayId };
+  }
 
   const [created] = await db
     .insert(workoutSessions)
@@ -38,6 +69,8 @@ export const POST = route(async ({ session, request }) => {
       performedOn: body.performedOn ?? localDate(user.timezone),
       durationMin: body.durationMin ?? null,
       note: body.note ?? null,
+      planId: plan?.planId ?? null,
+      planDayId: plan?.planDayId ?? null,
     })
     .returning();
 

@@ -30,6 +30,14 @@ type NewExercise = InferInsertModel<typeof exercises>;
  * по типовой технике движения и намеренно с запасом: пропустить опасное
  * хуже, чем лишний раз предупредить. Её стоит показать тренеру.
  *
+ * pattern — паттерн движения. Из него собирается программа тренировок:
+ * день описан не списком упражнений, а последовательностью паттернов
+ * («присед, горизонтальный жим, горизонтальная тяга, кор»), и под каждый
+ * подбирается доступное упражнение. Отсюда же берётся взаимозаменяемость:
+ * если жим лёжа отпал из-за плеча, замену ищут среди других h_push, а не
+ * среди «упражнений на грудь» — разведения гантелей грудь нагружают, но
+ * жим не заменяют.
+ *
  * Казахские названия — обиходные, с общепринятыми заимствованиями для
  * инвентаря (штанга, гантель). Их стоит показать носителю: спортивная
  * терминология в казахском не устоялась, и книжный вариант может звучать
@@ -43,6 +51,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'legs',
     equipment: 'штанга',
     metValue: 6,
+    pattern: 'squat',
     loadsAreas: ['knee', 'lower_back', 'hip'],
   },
   {
@@ -51,6 +60,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'legs',
     equipment: 'тренажёр',
     metValue: 5,
+    pattern: 'squat',
     loadsAreas: ['knee', 'lower_back', 'hip'],
   },
   {
@@ -59,6 +69,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'legs',
     equipment: 'гантели',
     metValue: 5,
+    pattern: 'lunge',
     loadsAreas: ['knee', 'hip', 'ankle'],
   },
   {
@@ -67,6 +78,34 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'legs',
     equipment: 'штанга',
     metValue: 6,
+    pattern: 'hinge',
+    loadsAreas: ['lower_back', 'hip'],
+  },
+  {
+    nameRu: 'Приседания с гантелями',
+    nameKk: 'Гантельмен отырып тұру',
+    muscleGroup: 'legs',
+    equipment: 'гантели',
+    metValue: 5,
+    pattern: 'squat',
+    loadsAreas: ['knee', 'lower_back', 'hip'],
+  },
+  {
+    nameRu: 'Румынская тяга с гантелями',
+    nameKk: 'Гантельмен румын тартуы',
+    muscleGroup: 'legs',
+    equipment: 'гантели',
+    metValue: 5,
+    pattern: 'hinge',
+    loadsAreas: ['lower_back', 'hip'],
+  },
+  {
+    nameRu: 'Ягодичный мостик',
+    nameKk: 'Жамбасты көтеру',
+    muscleGroup: 'legs',
+    equipment: 'без инвентаря',
+    metValue: 3.5,
+    pattern: 'ham_iso',
     loadsAreas: ['lower_back', 'hip'],
   },
   {
@@ -75,6 +114,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'legs',
     equipment: 'тренажёр',
     metValue: 3.5,
+    pattern: 'quad_iso',
     loadsAreas: ['knee'],
   },
   {
@@ -83,6 +123,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'legs',
     equipment: 'тренажёр',
     metValue: 3.5,
+    pattern: 'ham_iso',
     loadsAreas: ['knee'],
   },
   {
@@ -91,6 +132,16 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'legs',
     equipment: 'тренажёр',
     metValue: 3.5,
+    pattern: 'calf',
+    loadsAreas: ['ankle'],
+  },
+  {
+    nameRu: 'Подъёмы на носки стоя',
+    nameKk: 'Тұрып ұшбасқа көтерілу',
+    muscleGroup: 'legs',
+    equipment: 'без инвентаря',
+    metValue: 3.5,
+    pattern: 'calf',
     loadsAreas: ['ankle'],
   },
 
@@ -101,6 +152,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'chest',
     equipment: 'штанга',
     metValue: 6,
+    pattern: 'h_push',
     loadsAreas: ['shoulder', 'elbow', 'wrist'],
   },
   {
@@ -109,6 +161,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'chest',
     equipment: 'гантели',
     metValue: 5,
+    pattern: 'h_push',
     loadsAreas: ['shoulder', 'elbow', 'wrist'],
   },
   {
@@ -117,6 +170,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'chest',
     equipment: 'штанга',
     metValue: 5,
+    pattern: 'h_push',
     loadsAreas: ['shoulder', 'elbow', 'wrist'],
   },
   {
@@ -125,6 +179,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'chest',
     equipment: 'гантели',
     metValue: 3.5,
+    pattern: 'chest_iso',
     loadsAreas: ['shoulder'],
   },
   {
@@ -133,6 +188,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'chest',
     equipment: 'без инвентаря',
     metValue: 3.8,
+    pattern: 'h_push',
     loadsAreas: ['shoulder', 'elbow', 'wrist'],
   },
   {
@@ -141,6 +197,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'chest',
     equipment: 'брусья',
     metValue: 5,
+    pattern: 'h_push',
     loadsAreas: ['shoulder', 'elbow', 'wrist'],
   },
 
@@ -151,6 +208,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'back',
     equipment: 'штанга',
     metValue: 6,
+    pattern: 'hinge',
     loadsAreas: ['lower_back', 'hip', 'knee'],
   },
   {
@@ -159,6 +217,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'back',
     equipment: 'турник',
     metValue: 5,
+    pattern: 'v_pull',
     loadsAreas: ['shoulder', 'elbow'],
   },
   {
@@ -167,6 +226,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'back',
     equipment: 'штанга',
     metValue: 5,
+    pattern: 'h_pull',
     loadsAreas: ['lower_back', 'shoulder', 'elbow'],
   },
   {
@@ -175,6 +235,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'back',
     equipment: 'тренажёр',
     metValue: 3.5,
+    pattern: 'v_pull',
     loadsAreas: ['shoulder', 'elbow'],
   },
   {
@@ -183,6 +244,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'back',
     equipment: 'гантели',
     metValue: 3.5,
+    pattern: 'h_pull',
     loadsAreas: ['shoulder', 'elbow'],
   },
   {
@@ -191,6 +253,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'back',
     equipment: 'тренажёр',
     metValue: 3.5,
+    pattern: 'hinge',
     loadsAreas: ['lower_back', 'hip'],
   },
 
@@ -201,6 +264,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'shoulders',
     equipment: 'штанга',
     metValue: 5,
+    pattern: 'v_push',
     loadsAreas: ['shoulder', 'elbow', 'lower_back', 'neck'],
   },
   {
@@ -209,6 +273,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'shoulders',
     equipment: 'гантели',
     metValue: 5,
+    pattern: 'v_push',
     loadsAreas: ['shoulder', 'elbow', 'neck'],
   },
   {
@@ -217,6 +282,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'shoulders',
     equipment: 'гантели',
     metValue: 3.5,
+    pattern: 'delt_iso',
     loadsAreas: ['shoulder'],
   },
   {
@@ -225,6 +291,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'shoulders',
     equipment: 'гантели',
     metValue: 3.5,
+    pattern: 'delt_iso',
     loadsAreas: ['shoulder', 'lower_back', 'neck'],
   },
   {
@@ -233,6 +300,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'shoulders',
     equipment: 'штанга',
     metValue: 3.5,
+    pattern: 'delt_iso',
     loadsAreas: ['shoulder', 'neck', 'wrist'],
   },
 
@@ -243,6 +311,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'arms',
     equipment: 'штанга',
     metValue: 3.5,
+    pattern: 'biceps',
     loadsAreas: ['elbow', 'wrist'],
   },
   {
@@ -251,6 +320,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'arms',
     equipment: 'гантели',
     metValue: 3.5,
+    pattern: 'biceps',
     loadsAreas: ['elbow', 'wrist'],
   },
   {
@@ -259,6 +329,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'arms',
     equipment: 'штанга',
     metValue: 3.5,
+    pattern: 'triceps',
     loadsAreas: ['elbow', 'shoulder', 'wrist'],
   },
   {
@@ -267,7 +338,17 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'arms',
     equipment: 'тренажёр',
     metValue: 3.5,
+    pattern: 'triceps',
     loadsAreas: ['elbow'],
+  },
+  {
+    nameRu: 'Отжимания узким хватом',
+    nameKk: 'Тар ұстап көтерілу',
+    muscleGroup: 'arms',
+    equipment: 'без инвентаря',
+    metValue: 3.8,
+    pattern: 'triceps',
+    loadsAreas: ['elbow', 'shoulder', 'wrist'],
   },
   {
     nameRu: 'Молотковые сгибания',
@@ -275,6 +356,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'arms',
     equipment: 'гантели',
     metValue: 3.5,
+    pattern: 'biceps',
     loadsAreas: ['elbow', 'wrist'],
   },
 
@@ -285,6 +367,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'core',
     equipment: 'без инвентаря',
     metValue: 3.5,
+    pattern: 'core',
     loadsAreas: ['lower_back', 'shoulder', 'wrist'],
   },
   {
@@ -293,6 +376,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'core',
     equipment: 'без инвентаря',
     metValue: 3.5,
+    pattern: 'core',
     loadsAreas: ['neck', 'lower_back'],
   },
   {
@@ -301,6 +385,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'core',
     equipment: 'турник',
     metValue: 4,
+    pattern: 'core',
     loadsAreas: ['lower_back', 'shoulder'],
   },
   {
@@ -309,6 +394,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'core',
     equipment: 'без инвентаря',
     metValue: 3.5,
+    pattern: 'core',
     loadsAreas: ['shoulder', 'lower_back', 'wrist'],
   },
 
@@ -319,6 +405,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'cardio',
     equipment: 'без инвентаря',
     metValue: 9,
+    pattern: 'cardio',
     loadsAreas: ['knee', 'ankle', 'hip', 'lower_back'],
   },
   {
@@ -327,6 +414,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'cardio',
     equipment: 'без инвентаря',
     metValue: 4.3,
+    pattern: 'cardio',
     loadsAreas: [],
   },
   {
@@ -335,6 +423,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'cardio',
     equipment: 'тренажёр',
     metValue: 7,
+    pattern: 'cardio',
     loadsAreas: ['knee'],
   },
   {
@@ -343,6 +432,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'cardio',
     equipment: 'тренажёр',
     metValue: 7,
+    pattern: 'cardio',
     loadsAreas: ['lower_back', 'knee', 'shoulder'],
   },
   {
@@ -351,6 +441,7 @@ export const EXERCISES: NewExercise[] = [
     muscleGroup: 'cardio',
     equipment: 'скакалка',
     metValue: 8.8,
+    pattern: 'cardio',
     loadsAreas: ['ankle', 'knee', 'lower_back'],
   },
 ];

@@ -451,6 +451,162 @@ describe('Травмы и ограничения', () => {
   });
 });
 
+describe('Программа тренировок', () => {
+  interface PlannedExercise {
+    exerciseId: string;
+    name: string;
+    sets: number;
+    doneSets?: number;
+  }
+  interface Program {
+    daysPerWeek: number;
+    nextDayIndex: number;
+    days: { id: string; dayIndex: number; focus: string; exercises: PlannedExercise[] }[];
+    skipped: { pattern: string; reason: string; areas: string[] }[];
+  }
+
+  async function program(): Promise<Program> {
+    const { body } = await call('/api/program', ALICE);
+    return body.program as Program;
+  }
+
+  function names(plan: Program): string[] {
+    return plan.days.flatMap((d) => d.exercises.map((e) => e.name));
+  }
+
+  test('программа собирается и повторяется в точности', async () => {
+    const body = JSON.stringify({ daysPerWeek: 4, place: 'gym' });
+    const built = await call('/api/program', ALICE, { method: 'POST', body });
+    assert.equal(built.status, 200);
+
+    const first = await program();
+    assert.equal(first.days.length, 4);
+    assert.equal(first.nextDayIndex, 1, 'без тренировок начинать с первого дня');
+    assert.ok(first.days.every((d) => d.exercises.length > 0));
+
+    // Главное свойство раздела: подбор детерминированный. Программа,
+    // которая меняется от нажатия к нажатию, однажды предложит человеку
+    // с больной поясницей становую тягу
+    await call('/api/program', ALICE, { method: 'POST', body });
+    assert.deepEqual(names(await program()), names(first));
+  });
+
+  test('травма выкидывает движения из программы, а не помечает их', async () => {
+    const injury = await call('/api/injuries', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ area: 'lower_back', severity: 'pain' }),
+    });
+    assert.equal(injury.status, 200);
+
+    await call('/api/program', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ daysPerWeek: 3, place: 'gym' }),
+    });
+
+    const plan = await program();
+    const picked = names(plan);
+    // При ручном выборе эти движения остались бы доступными с пометкой:
+    // там решает человек. Здесь предлагает приложение — и предложить
+    // становую тягу на больную поясницу оно не вправе
+    assert.ok(!picked.includes('Становая тяга'));
+    assert.ok(!picked.includes('Приседания со штангой'));
+    assert.ok(!picked.includes('Гиперэкстензия'));
+
+    // И честно говорит, чего в программе нет
+    assert.ok(
+      plan.skipped.some(
+        (s) => s.reason === 'injury' && s.areas.includes('lower_back'),
+      ),
+      'непокрытые слоты должны быть названы',
+    );
+
+    await call(`/api/injuries/${injury.body.id}`, ALICE, { method: 'DELETE' });
+  });
+
+  test('тренировка по плану знает, что сегодня делать', async () => {
+    await call('/api/program', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ daysPerWeek: 3, place: 'home' }),
+    });
+    const plan = await program();
+    const day = plan.days[0];
+
+    const started = await call('/api/workouts', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ planDayId: day.id }),
+    });
+    assert.equal(started.status, 200);
+    const workoutId = started.body.id as string;
+
+    const read = await call(`/api/workouts/${workoutId}`, ALICE);
+    const planDay = read.body.planDay as {
+      dayIndex: number;
+      exercises: PlannedExercise[];
+    };
+    assert.equal(planDay.dayIndex, 1);
+    assert.equal(planDay.exercises.length, day.exercises.length);
+    assert.equal(planDay.exercises[0].doneSets, 0);
+
+    // Отметку в плане ставит записанный подход, а не отдельный тап:
+    // лишний тап в зале — это тап, который не сделают
+    await call(`/api/workouts/${workoutId}/sets`, ALICE, {
+      method: 'POST',
+      body: JSON.stringify({
+        exerciseId: day.exercises[0].exerciseId,
+        weightKg: 20,
+        reps: 8,
+      }),
+    });
+
+    const after = await call(`/api/workouts/${workoutId}`, ALICE);
+    assert.equal(
+      (after.body.planDay as { exercises: PlannedExercise[] }).exercises[0].doneSets,
+      1,
+    );
+
+    // Следующей становится вторая тренировка недели — очередь считается
+    // по журналу, а не по календарю: «понедельник — грудь» ломается
+    // на первой же командировке
+    assert.equal((await program()).nextDayIndex, 2);
+
+    await call(`/api/workouts/${workoutId}`, ALICE, { method: 'DELETE' });
+  });
+
+  test('чужой день плана к своей тренировке не привязать', async () => {
+    const plan = await program();
+    const { status } = await call('/api/workouts', BOB, {
+      method: 'POST',
+      body: JSON.stringify({ planDayId: plan.days[0].id }),
+    });
+    assert.equal(status, 404);
+  });
+
+  test('невозможные параметры сборки отвергаются', async () => {
+    const oneDay = await call('/api/program', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ daysPerWeek: 1, place: 'gym' }),
+    });
+    assert.equal(oneDay.status, 422);
+
+    const nowhere = await call('/api/program', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ daysPerWeek: 3, place: 'улица' }),
+    });
+    assert.equal(nowhere.status, 422);
+  });
+
+  test('от программы можно отказаться', async () => {
+    const dropped = await call('/api/program', ALICE, { method: 'DELETE' });
+    assert.equal(dropped.status, 200);
+
+    const { body } = await call('/api/program', ALICE);
+    assert.equal(body.program, null);
+
+    const again = await call('/api/program', ALICE, { method: 'DELETE' });
+    assert.equal(again.status, 404, 'отказываться второй раз не от чего');
+  });
+});
+
 describe('Язык ответов', () => {
   test('ошибка валидации приходит по-казахски', async () => {
     const { status, body } = await call('/api/onboarding', KAIRAT, {

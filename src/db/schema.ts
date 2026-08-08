@@ -474,23 +474,101 @@ export const planMeals = pgTable(
   (t) => [index('plan_meals_plan_day_idx').on(t.planId, t.dayIndex)],
 );
 
-/* ──────────────── Тренировки: задел на будущий этап ────────────────── */
+/* ──────────────────────── Программа тренировок ─────────────────────── */
 
-export const workoutPlans = pgTable('workout_plans', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  title: text('title').notNull(),
-  /** Сколько тренировок в неделю — влияет на коэффициент активности в TDEE */
-  daysPerWeek: integer('days_per_week').notNull(),
-  startsOn: date('starts_on').notNull(),
-  isActive: boolean('is_active').notNull().default(true),
-  aiModel: text('ai_model'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+/**
+ * Программа тренировок.
+ *
+ * Собирается детерминированно, из шаблонов сплитов и разметки справочника:
+ * колонка aiModel остаётся пустой намеренно. Причина та же, что и с
+ * калориями, но цена ошибки выше — сгенерированная программа
+ * невоспроизводима, и человеку с больной поясницей она в один прекрасный
+ * запуск предложит становую тягу. Модель не участвует, см. lib/health/program.ts.
+ *
+ * Параметры сборки хранятся рядом с планом (daysPerWeek, place, goalType,
+ * level): без них программу нельзя пересобрать теми же входными данными,
+ * когда справочник или травмы изменились.
+ */
+export const workoutPlans = pgTable(
+  'workout_plans',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    /** Сколько тренировок в неделю — влияет на коэффициент активности в TDEE */
+    daysPerWeek: integer('days_per_week').notNull(),
+    /** Где занимается: gym — зал со штангой и тренажёрами, home — гантели и вес тела */
+    place: text('place').notNull().default('gym'),
+    /** Цель на момент сборки: от неё зависят повторы, подходы и наличие кардио */
+    goalType: goalTypeEnum('goal_type'),
+    /** novice | regular — берётся из активности профиля, задаёт объём работы */
+    level: text('level'),
+    /**
+     * Слоты, для которых не нашлось безопасного упражнения:
+     * [{ pattern, reason: 'injury' | 'equipment', areas: [...] }].
+     *
+     * Хранится, а не считается на лету: это снимок причин на момент сборки.
+     * Молча выкинуть из программы вертикальный жим — значит соврать, что
+     * программа полная; человек должен видеть, чего в ней нет и почему.
+     */
+    skipped: jsonb('skipped'),
+    startsOn: date('starts_on').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    /** Остаётся пустым: программу собирает таблица, а не модель */
+    aiModel: text('ai_model'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('workout_plans_user_active_idx').on(t.userId, t.isActive)],
+);
+
+/**
+ * День программы. Хранится ключ фокуса (push, pull, legs, full…), а не
+ * готовый заголовок: подпись переводится на язык интерфейса, а записанная
+ * при сборке русская строка осталась бы русской и в казахском приложении.
+ */
+export const planDays = pgTable(
+  'plan_days',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => workoutPlans.id, { onDelete: 'cascade' }),
+    /** 1..6 — порядковый день внутри недели программы */
+    dayIndex: integer('day_index').notNull(),
+    /** full_a, full_b, full_c, push, pull, legs, upper, lower */
+    focus: text('focus').notNull(),
+  },
+  (t) => [uniqueIndex('plan_days_plan_index_idx').on(t.planId, t.dayIndex)],
+);
+
+export const planExercises = pgTable(
+  'plan_exercises',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    dayId: uuid('day_id')
+      .notNull()
+      .references(() => planDays.id, { onDelete: 'cascade' }),
+    exerciseId: uuid('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'restrict' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    /** Паттерн слота, под который подобрано упражнение — по нему ищется замена */
+    pattern: text('pattern').notNull(),
+    sets: integer('sets').notNull(),
+    /* Диапазон повторов: попал в верхнюю границу во всех подходах —
+       пора добавлять вес. Одно число такого правила не даёт. */
+    repMin: integer('rep_min'),
+    repMax: integer('rep_max'),
+    /** Кардио меряется минутами, а не повторами */
+    durationMin: integer('duration_min'),
+    restSec: integer('rest_sec'),
+  },
+  (t) => [index('plan_exercises_day_idx').on(t.dayId, t.sortOrder)],
+);
 
 export const exercises = pgTable('exercises', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -501,6 +579,16 @@ export const exercises = pgTable('exercises', {
   equipment: text('equipment'),
   /** Расход энергии, MET — для оценки калорий тренировки */
   metValue: real('met_value'),
+  /**
+   * Паттерн движения: squat, hinge, lunge, h_push, v_push, h_pull, v_pull,
+   * chest_iso, delt_iso, biceps, triceps, quad_iso, ham_iso, calf, core, cardio.
+   *
+   * Из него собирается программа: день описан последовательностью паттернов,
+   * а не списком упражнений. Отсюда же берётся взаимозаменяемость — замену
+   * выпавшему жиму лёжа ищут среди других h_push, а не среди «упражнений
+   * на грудь»: разведения гантелей грудь нагружают, но жим не заменяют.
+   */
+  pattern: text('pattern'),
   /**
    * Какие области тела нагружает движение — по ним упражнение сопоставляется
    * с травмами пользователя.
@@ -555,6 +643,14 @@ export const workoutSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     planId: uuid('plan_id').references(() => workoutPlans.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * День программы, по которому идёт тренировка. Отдельно от planId:
+     * зная только план, экран не может показать, что именно сегодня делать.
+     * set null — удалённая программа не должна уносить с собой журнал.
+     */
+    planDayId: uuid('plan_day_id').references(() => planDays.id, {
       onDelete: 'set null',
     }),
     performedOn: date('performed_on').notNull(),
@@ -660,6 +756,33 @@ export const injuriesRelations = relations(injuries, ({ one }) => ({
   user: one(users, { fields: [injuries.userId], references: [users.id] }),
 }));
 
+export const workoutPlansRelations = relations(
+  workoutPlans,
+  ({ one, many }) => ({
+    user: one(users, { fields: [workoutPlans.userId], references: [users.id] }),
+    days: many(planDays),
+  }),
+);
+
+export const planDaysRelations = relations(planDays, ({ one, many }) => ({
+  plan: one(workoutPlans, {
+    fields: [planDays.planId],
+    references: [workoutPlans.id],
+  }),
+  exercises: many(planExercises),
+}));
+
+export const planExercisesRelations = relations(planExercises, ({ one }) => ({
+  day: one(planDays, {
+    fields: [planExercises.dayId],
+    references: [planDays.id],
+  }),
+  exercise: one(exercises, {
+    fields: [planExercises.exerciseId],
+    references: [exercises.id],
+  }),
+}));
+
 export const workoutSetsRelations = relations(workoutSets, ({ one }) => ({
   session: one(workoutSessions, {
     fields: [workoutSets.sessionId],
@@ -689,3 +812,8 @@ export type ActivityLevel = (typeof activityLevelEnum.enumValues)[number];
 export type BodyType = (typeof bodyTypeEnum.enumValues)[number];
 export type MealType = (typeof mealTypeEnum.enumValues)[number];
 export type Locale = (typeof localeEnum.enumValues)[number];
+export type GoalType = (typeof goalTypeEnum.enumValues)[number];
+export type Exercise = typeof exercises.$inferSelect;
+export type WorkoutPlan = typeof workoutPlans.$inferSelect;
+export type PlanDay = typeof planDays.$inferSelect;
+export type PlanExercise = typeof planExercises.$inferSelect;

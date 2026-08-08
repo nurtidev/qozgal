@@ -70,10 +70,17 @@ async function seedExercises() {
   // это справочные данные, и правка в файле должна доезжать до базы. Правка
   // тут напрямую влияет на предупреждения о травмах — устаревшая разметка
   // означала бы, что человеку не сказали про опасное движение.
+  //
+  // Паттерн движения обновляется здесь же: без него упражнение не попадёт
+  // ни в один слот программы и просто выпадет из подбора.
   for (const exercise of EXERCISES) {
     await db
       .update(exercises)
-      .set({ loadsAreas: exercise.loadsAreas ?? [], metValue: exercise.metValue })
+      .set({
+        loadsAreas: exercise.loadsAreas ?? [],
+        metValue: exercise.metValue,
+        pattern: exercise.pattern ?? null,
+      })
       .where(eq(exercises.nameRu, exercise.nameRu));
   }
 

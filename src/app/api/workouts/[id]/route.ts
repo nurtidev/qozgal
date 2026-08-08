@@ -1,11 +1,20 @@
 import { z } from 'zod';
-import { and, eq, desc, ne } from 'drizzle-orm';
+import { and, eq, desc, ne, isNull } from 'drizzle-orm';
 
 import { route, parseBody, dateSchema } from '@/lib/api';
 import { db } from '@/db';
-import { workoutSessions, workoutSets, exercises } from '@/db/schema';
+import {
+  workoutSessions,
+  workoutSets,
+  exercises,
+  planDays,
+  planExercises,
+  workoutPlans,
+  injuries,
+} from '@/db/schema';
 import { toLocale } from '@/i18n/messages';
 import { setVolume, estimateBurnKcal, bestSet } from '@/lib/health/workout';
+import { conflictsFor } from '@/lib/health/injury';
 import { latestWeight } from '@/db/queries';
 
 type Params = { id: string };
@@ -83,6 +92,11 @@ export const GET = route<Params>(async ({ session, params, t }) => {
     performedOn: workout.performedOn,
     durationMin: workout.durationMin,
     note: workout.note,
+    // План дня, если тренировка идёт по программе: в зале нужно видеть,
+    // что осталось сделать, а не вспоминать это по журналу прошлой недели
+    planDay: workout.planDayId
+      ? await loadPlanDay(workout.planDayId, session.user.id, locale, rows)
+      : null,
     volumeKg: Math.round(
       rows.reduce((sum, r) => sum + setVolume(r.set.weightKg, r.set.reps), 0),
     ),
@@ -108,6 +122,62 @@ export const GET = route<Params>(async ({ session, params, t }) => {
     })),
   });
 });
+
+/**
+ * План дня рядом с журналом.
+ *
+ * Отмеченным считается упражнение, по которому в этой тренировке уже есть
+ * записанные подходы: галочка ставится фактом работы, а не отдельным тапом.
+ * Лишний тап в зале — это тап, который не сделают.
+ */
+async function loadPlanDay(
+  planDayId: string,
+  userId: string,
+  locale: 'ru' | 'kk',
+  recorded: { set: { exerciseId: string } }[],
+) {
+  const [day] = await db
+    .select({ day: planDays, plan: workoutPlans })
+    .from(planDays)
+    .innerJoin(workoutPlans, eq(workoutPlans.id, planDays.planId))
+    .where(and(eq(planDays.id, planDayId), eq(workoutPlans.userId, userId)))
+    .limit(1);
+
+  if (!day) return null;
+
+  const active = await db
+    .select({ area: injuries.area, severity: injuries.severity })
+    .from(injuries)
+    .where(and(eq(injuries.userId, userId), isNull(injuries.resolvedOn)));
+
+  const rows = await db
+    .select({ planned: planExercises, exercise: exercises })
+    .from(planExercises)
+    .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
+    .where(eq(planExercises.dayId, day.day.id))
+    .orderBy(planExercises.sortOrder);
+
+  return {
+    id: day.day.id,
+    dayIndex: day.day.dayIndex,
+    focus: day.day.focus,
+    daysPerWeek: day.plan.daysPerWeek,
+    exercises: rows.map((r) => ({
+      exerciseId: r.exercise.id,
+      name:
+        (locale === 'kk' ? r.exercise.nameKk : r.exercise.nameRu) ??
+        r.exercise.nameRu,
+      muscleGroup: r.exercise.muscleGroup,
+      sets: r.planned.sets,
+      repMin: r.planned.repMin,
+      repMax: r.planned.repMax,
+      durationMin: r.planned.durationMin,
+      restSec: r.planned.restSec,
+      doneSets: recorded.filter((s) => s.set.exerciseId === r.exercise.id).length,
+      conflicts: conflictsFor(r.exercise.loadsAreas, active),
+    })),
+  };
+}
 
 const patchSchema = z.object({
   performedOn: dateSchema.optional(),

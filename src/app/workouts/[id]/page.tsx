@@ -35,6 +35,27 @@ interface WorkoutSet {
   previousBest: { weightKg: number; reps: number } | null;
 }
 
+interface PlannedExercise {
+  exerciseId: string;
+  name: string;
+  muscleGroup: string;
+  sets: number;
+  repMin: number | null;
+  repMax: number | null;
+  durationMin: number | null;
+  restSec: number | null;
+  /** Сколько подходов уже записано в этой тренировке */
+  doneSets: number;
+  conflicts: Conflict[];
+}
+
+interface PlanDay {
+  id: string;
+  dayIndex: number;
+  focus: string;
+  exercises: PlannedExercise[];
+}
+
 interface Workout {
   id: string;
   performedOn: string;
@@ -42,6 +63,8 @@ interface Workout {
   note: string | null;
   volumeKg: number;
   estimatedBurnKcal: number | null;
+  /** Заполнен, если тренировка идёт по программе */
+  planDay: PlanDay | null;
   sets: WorkoutSet[];
 }
 
@@ -67,6 +90,7 @@ export default function WorkoutPage() {
   const t = useTranslations('workouts');
   const tc = useTranslations('common');
   const ti = useTranslations('injuries');
+  const tp = useTranslations('program');
   const dates = useDates();
 
   useTelegramApp();
@@ -240,6 +264,75 @@ export default function WorkoutPage() {
           </span>
         )}
       </header>
+
+      {/* План дня — чек-лист, а не отдельный экран: в зале переключаться
+          между «что делать» и «куда записать» неудобно, а тап по строке
+          сразу выбирает упражнение для записи подхода */}
+      {workout.planDay && (
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-medium">{t('planDay')}</span>
+            <span className="text-sm text-[var(--tg-theme-hint-color)]">
+              {tp('day', { index: workout.planDay.dayIndex })} ·{' '}
+              {tp(`focus.${workout.planDay.focus}` as 'focus.push')}
+            </span>
+          </div>
+
+          <ul className="flex flex-col">
+            {workout.planDay.exercises.map((planned) => {
+              const complete = planned.doneSets >= planned.sets;
+              return (
+                <li key={planned.exerciseId}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic('select');
+                      setChosen({
+                        id: planned.exerciseId,
+                        name: planned.name,
+                        muscleGroup: planned.muscleGroup,
+                        equipment: null,
+                        conflicts: planned.conflicts,
+                      });
+                      setPicking(false);
+                    }}
+                    className="flex min-h-11 w-full items-baseline justify-between gap-2 border-b border-[var(--tg-theme-bg-color)] py-1 text-left last:border-0"
+                  >
+                    <span className="flex items-baseline gap-2">
+                      <span
+                        className={`tabular text-xs ${
+                          complete
+                            ? 'text-[var(--tg-theme-link-color)]'
+                            : 'text-[var(--tg-theme-hint-color)]'
+                        }`}
+                      >
+                        {complete
+                          ? '✓'
+                          : t('planDone', {
+                              done: planned.doneSets,
+                              total: planned.sets,
+                            })}
+                      </span>
+                      <span className={`text-sm ${complete ? 'opacity-50' : ''}`}>
+                        {planned.name}
+                      </span>
+                    </span>
+                    <span className="tabular shrink-0 text-xs text-[var(--tg-theme-hint-color)]">
+                      {planned.durationMin
+                        ? tp('doseMin', { min: planned.durationMin })
+                        : tp('dose', {
+                            sets: planned.sets,
+                            repMin: planned.repMin ?? 0,
+                            repMax: planned.repMax ?? 0,
+                          })}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
 
       <Card className="flex items-center justify-between gap-3">
         <span className="text-sm text-[var(--tg-theme-hint-color)]">
