@@ -120,6 +120,18 @@ export const users = pgTable(
     timezone: text('timezone').notNull().default('Asia/Almaty'),
     isBlocked: boolean('is_blocked').notNull().default(false),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+
+    /* Закреплённая в чате сводка дня. Одно сообщение на человека, которое
+       бот переписывает после каждой записи: чат становится приборной
+       панелью, а не лентой. Помним, за какой день оно собрано — на новый
+       день сводка обнуляется, а не дописывается. */
+    pinnedSummaryId: integer('pinned_summary_id'),
+    pinnedSummaryOn: date('pinned_summary_on'),
+    /* Убирать ли из чата фотографии и карточки разбора после сохранения.
+       По умолчанию да — ради этого сводка и закрепляется, — но человеку,
+       который листает чат как историю, это ломает привычку, поэтому
+       поведение выключаемо. */
+    tidyChat: boolean('tidy_chat').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -337,6 +349,10 @@ export const foodEntries = pgTable(
        отправляет уже сохранённую запись в отменённые. */
     botChatId: bigint('bot_chat_id', { mode: 'number' }),
     botMessageId: integer('bot_message_id'),
+    /* Сообщение человека, с которого начался разбор: фотография или
+       описание. Нужно, чтобы убрать его из чата после сохранения записи —
+       само по себе оно уже ничего не добавляет, а место занимает. */
+    userMessageId: integer('user_message_id'),
 
     /* Отладочный след разбора: по нему можно переразобрать запись,
        если поменяем промпт или модель, и оценить качество распознавания */

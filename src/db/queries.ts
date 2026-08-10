@@ -6,6 +6,8 @@ import {
   weightLogs,
   foodEntries,
   foodItems,
+  workoutSessions,
+  workoutSets,
   type User,
   type MealType,
 } from './schema';
@@ -100,6 +102,8 @@ export interface CreateEntryInput {
   /** Сообщение бота с карточкой — по нему приложение гасит кнопки */
   botChatId?: number;
   botMessageId?: number;
+  /** Сообщение человека, с которого начался разбор — по нему чат убирается */
+  userMessageId?: number;
 }
 
 /**
@@ -126,6 +130,7 @@ export async function createPendingEntry(
         rawInput: input.rawInput ?? null,
         botChatId: input.botChatId ?? null,
         botMessageId: input.botMessageId ?? null,
+        userMessageId: input.userMessageId ?? null,
         aiModel: input.aiModel ?? null,
         aiRawResponse: input.recognition ?? null,
         aiLatencyMs: input.aiLatencyMs ?? null,
@@ -152,6 +157,21 @@ export async function createPendingEntry(
 
     return entry.id;
   });
+}
+
+/** Сообщения, из которых выросла запись: снимок человека и карточка бота */
+export async function getEntryMessages(entryId: string, userId: string) {
+  const [row] = await db
+    .select({
+      botChatId: foodEntries.botChatId,
+      botMessageId: foodEntries.botMessageId,
+      userMessageId: foodEntries.userMessageId,
+    })
+    .from(foodEntries)
+    .where(and(eq(foodEntries.id, entryId), eq(foodEntries.userId, userId)))
+    .limit(1);
+
+  return row ?? null;
 }
 
 /** Подтверждает разбор — только после этого запись попадает в дневной итог */
@@ -221,6 +241,66 @@ export async function getDayTotals(
     carbsG: Math.round(Number(row?.carbsG ?? 0) * 10) / 10,
     entryCount: Number(row?.entryCount ?? 0),
   };
+}
+
+/**
+ * Приёмы пищи за день для закреплённой сводки: только подтверждённые
+ * и только итог по каждому — состав в сводке не нужен, он есть в дневнике.
+ */
+export async function getDayMeals(
+  userId: string,
+  date: string,
+): Promise<{ mealType: MealType; kcal: number }[]> {
+  const rows = await db
+    .select({
+      id: foodEntries.id,
+      mealType: foodEntries.mealType,
+      consumedAt: foodEntries.consumedAt,
+      kcal: sql<number>`coalesce(sum(${foodItems.kcal}), 0)`,
+    })
+    .from(foodEntries)
+    .leftJoin(foodItems, eq(foodItems.entryId, foodEntries.id))
+    .where(
+      and(
+        eq(foodEntries.userId, userId),
+        eq(foodEntries.consumedOn, date),
+        eq(foodEntries.status, 'confirmed'),
+      ),
+    )
+    .groupBy(foodEntries.id, foodEntries.mealType, foodEntries.consumedAt)
+    .orderBy(foodEntries.consumedAt);
+
+  return rows.map((row) => ({
+    mealType: row.mealType,
+    kcal: Math.round(Number(row.kcal)),
+  }));
+}
+
+/**
+ * Тоннаж сегодняшних тренировок.
+ *
+ * В сводке он показывается фактом и не превращается в калории: расход
+ * уже учтён коэффициентом активности в норме, и показать его рядом
+ * с остатком значило бы предложить эти калории съесть.
+ */
+export async function getDayWorkoutVolume(
+  userId: string,
+  date: string,
+): Promise<number> {
+  const [row] = await db
+    .select({
+      volume: sql<number>`coalesce(sum(coalesce(${workoutSets.weightKg}, 0) * coalesce(${workoutSets.reps}, 0)), 0)`,
+    })
+    .from(workoutSessions)
+    .leftJoin(workoutSets, eq(workoutSets.sessionId, workoutSessions.id))
+    .where(
+      and(
+        eq(workoutSessions.userId, userId),
+        eq(workoutSessions.performedOn, date),
+      ),
+    );
+
+  return Math.round(Number(row?.volume ?? 0));
 }
 
 /** Последнее взвешивание — нужно там, где расчёт идёт от веса тела */

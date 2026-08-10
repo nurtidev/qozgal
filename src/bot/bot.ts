@@ -10,12 +10,16 @@ import {
   discardEntry,
   getDayTotals,
   getActiveGoal,
+  getEntryMessages,
   localDate,
   localHour,
 } from '@/db/queries';
 import { formatEntrySummary, escapeHtml, welcome } from './format';
+import { refreshDaySummary, tidyEntryMessages } from './pinned';
 import { translator, toLocale, type Locale } from '@/i18n/messages';
-import type { User } from '@/db/schema';
+import { db } from '@/db';
+import { users, type User } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 /**
  * Язык ответа.
@@ -60,6 +64,27 @@ bot.command('start', async (ctx) => {
     parse_mode: 'HTML',
     reply_markup: appKeyboard(locale),
   });
+
+  // Сводка появляется сразу, а не после первой записи: иначе человек
+  // увидит закреплённое сообщение неизвестно откуда посреди дня
+  const user = await resolveUser(ctx);
+  if (user) await refreshDaySummary(ctx.api, user, ctx.chat.id);
+});
+
+/**
+ * Переключатель уборки чата.
+ *
+ * Команда скрытая, в меню её нет: она нужна тем немногим, кто листает
+ * чат как историю питания, а объяснять её всем остальным — значит
+ * навязывать выбор там, где разумное поведение и так по умолчанию.
+ */
+bot.command('tidy', async (ctx) => {
+  const user = await resolveUser(ctx);
+  if (!user) return;
+
+  const next = !user.tidyChat;
+  await db.update(users).set({ tidyChat: next }).where(eq(users.id, user.id));
+  await ctx.reply(speak(user)(next ? 'bot.tidyOn' : 'bot.tidyOff'));
 });
 
 bot.command('app', async (ctx) => {
@@ -146,6 +171,7 @@ bot.on('message:photo', async (ctx) => {
       photoRef: `tg:${photo.file_id}`,
       source: 'photo',
       rawInput: ctx.message.caption,
+      userMessageId: ctx.message.message_id,
     });
   } catch (error) {
     await reportFailure(ctx, status.message_id, error);
@@ -206,6 +232,7 @@ bot.on('message:document', async (ctx) => {
       photoRef: `tg:${doc.file_id}`,
       source: 'photo',
       rawInput: ctx.message.caption,
+      userMessageId: ctx.message.message_id,
     });
   } catch (error) {
     await reportFailure(ctx, status.message_id, error);
@@ -227,10 +254,23 @@ bot.on('message:text', async (ctx) => {
       text: ctx.message.text,
       source: 'text',
       rawInput: ctx.message.text,
+      userMessageId: ctx.message.message_id,
     });
   } catch (error) {
     await reportFailure(ctx, status.message_id, error);
   }
+});
+
+/**
+ * Служебная строчка «бот закрепил сообщение».
+ *
+ * Появляется при каждом закреплении и копится в чате — то есть ровно
+ * то, от чего закреплённая сводка и должна была избавить. Удаляем молча.
+ */
+bot.on('message:pinned_message', async (ctx) => {
+  await ctx.api
+    .deleteMessage(ctx.chat.id, ctx.message.message_id)
+    .catch(() => {});
 });
 
 /**
@@ -282,6 +322,25 @@ bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
 
   await ctx.answerCallbackQuery({ text: t('bot.saved') });
 
+  const chatId = ctx.chat?.id;
+
+  /**
+   * Чистый чат: снимок и карточка разбора своё уже отработали, а в
+   * переписке остаются навсегда. Вместо них человек видит закреплённую
+   * сводку дня, которая обновляется на месте.
+   */
+  if (user.tidyChat && chatId) {
+    const messages = await getEntryMessages(entryId, user.id);
+    await tidyEntryMessages(ctx.api, chatId, [
+      messages?.userMessageId ?? null,
+      messages?.botMessageId ?? null,
+    ]);
+    await refreshDaySummary(ctx.api, user, chatId);
+    return;
+  }
+
+  if (chatId) await refreshDaySummary(ctx.api, user, chatId);
+
   // Разметку переносим через entities, а не через parse_mode.
   // message.text отдаёт текст уже без тегов, поэтому повторная отправка
   // с parse_mode: 'HTML' рендерила бы его без жирного и курсива —
@@ -316,6 +375,8 @@ interface RecognitionRequest {
   photoRef?: string;
   source: 'photo' | 'text';
   rawInput?: string;
+  /** Сообщение, с которого начался разбор — по нему чат убирается */
+  userMessageId?: number;
 }
 
 async function handleRecognition(
@@ -362,6 +423,7 @@ async function handleRecognition(
     recognition: outcome.recognition,
     photoUrl: request.photoRef,
     rawInput: request.rawInput,
+    userMessageId: request.userMessageId,
     aiModel: outcome.meta.model,
     aiLatencyMs: outcome.meta.latencyMs,
     // Карточка уедет в это же сообщение — запоминаем его, чтобы Mini App
