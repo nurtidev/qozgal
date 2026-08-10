@@ -16,6 +16,7 @@ import {
 import {
   Screen,
   Card,
+  Chip,
   Hint,
   Button,
   Segmented,
@@ -37,6 +38,8 @@ interface Item {
   confidence: number | null;
   estimatedGrams: number | null;
   productId: string | null;
+  /** Числа взяты из непроверенной карточки справочника */
+  isEstimate: boolean;
 }
 
 interface Entry {
@@ -638,15 +641,21 @@ function ItemRow({
     <Card className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="t-body truncate font-medium">{item.name}</span>
-        <span className="n-m shrink-0">
-          {known && n ? (
-            <>
-              {n.kcal}
-              <span className="t-caption ml-1">{tc('kcal')}</span>
-            </>
-          ) : (
-            <span className="t-caption">{tc('noData')}</span>
-          )}
+        <span className="flex shrink-0 items-baseline gap-2">
+          {/* Числа расчётной карточки не должны выглядеть как выверенные:
+              расхождение там доходит до четверти, а на экране разницы
+              не видно — она видна только здесь */}
+          {known && item.isEstimate && <Chip>{t('estimate')}</Chip>}
+          <span className="n-m">
+            {known && n ? (
+              <>
+                {n.kcal}
+                <span className="t-caption ml-1">{tc('kcal')}</span>
+              </>
+            ) : (
+              <span className="t-caption">{tc('noData')}</span>
+            )}
+          </span>
         </span>
       </div>
 

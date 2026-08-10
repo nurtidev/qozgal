@@ -23,13 +23,20 @@ function confidenceMark(item: ResolvedItem): string {
   return '';
 }
 
+/**
+ * Название позиции на языке человека.
+ *
+ * Модель отвечает по-русски: язык промпта один. Если позиция нашлась
+ * в справочнике и у карточки есть казахское имя, показываем его.
+ */
+function localName(resolved: ResolvedItem, locale: Locale): string {
+  const { item, product } = resolved;
+  return locale === 'kk' && product?.nameKk ? product.nameKk : item.nameRu;
+}
+
 function formatItem(resolved: ResolvedItem, t: T, locale: Locale): string {
   const { item, nutrition, matchedBy, product } = resolved;
-  // Модель отвечает по-русски: язык промпта один. Если позиция нашлась
-  // в справочнике и у карточки есть казахское имя, показываем его
-  const name = escapeHtml(
-    locale === 'kk' && product?.nameKk ? product.nameKk : item.nameRu,
-  );
+  const name = escapeHtml(localName(resolved, locale));
   const mark = confidenceMark(resolved);
   const grams = `${item.grams} ${t('common.g')}`;
 
@@ -37,10 +44,16 @@ function formatItem(resolved: ResolvedItem, t: T, locale: Locale): string {
     return `• ${name} — ${grams}${mark}\n  <i>${t('bot.noProduct')}</i>`;
   }
 
-  // Блюдо собрано из ингредиентов, а не найдено готовой карточкой.
-  // Знак «≈» отличает такую цифру от прямого попадания в справочник:
-  // числа по-прежнему из базы, но пропорции состава — оценка.
-  const approx = matchedBy === 'derived' ? '≈' : '';
+  /**
+   * Знак «≈» отличает приблизительную цифру от выверенной. Причин две,
+   * и обе честнее показать, чем скрыть:
+   *  — блюдо собрано из ингредиентов, а не найдено готовой карточкой:
+   *    числа из базы, но пропорции состава — оценка;
+   *  — карточка справочника заведена расчётом по типовой рецептуре
+   *    и не сверена с измерениями: расхождение доходит до четверти.
+   */
+  const approx =
+    matchedBy === 'derived' || product?.isVerified === false ? '≈' : '';
 
   return `• ${name} — ${grams} · <b>${approx}${nutrition.kcal} ${t('common.kcal')}</b>${mark}`;
 }
@@ -87,6 +100,20 @@ export function formatEntrySummary(input: EntrySummaryInput): string {
     const names = derived.map((r) => escapeHtml(r.item.nameRu)).join(', ');
     lines.push('');
     lines.push(`<i>≈ ${t('bot.derived', { names })}</i>`);
+  }
+
+  // Непроверенные карточки — отдельной строкой от собранных по составу:
+  // причина приблизительности разная, и человеку, который захочет
+  // перепроверить цифру, важно знать какая
+  const estimated = resolved.filter(
+    (r) => r.matchedBy !== 'derived' && r.product?.isVerified === false,
+  );
+  if (estimated.length > 0) {
+    const names = estimated
+      .map((r) => escapeHtml(localName(r, locale)))
+      .join(', ');
+    lines.push('');
+    lines.push(`<i>≈ ${t('bot.estimated', { names })}</i>`);
   }
 
   const lowConfidence = resolved.filter(

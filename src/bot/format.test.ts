@@ -166,6 +166,37 @@ describe('Карточка разбора', () => {
     assert.match(kk, /бірнеше адамға есептелген/);
   });
 
+  test('расчётная карточка помечена как приблизительная', () => {
+    // Карточки местной кухни заведены расчётом по типовым рецептурам:
+    // выглядеть как выверенное измерение их числа не должны
+    const estimated: ResolvedItem = {
+      ...withNutrition,
+      product: {
+        nameRu: 'Куырдак',
+        nameKk: 'Қуырдақ',
+        isVerified: false,
+      } as ResolvedItem['product'],
+    };
+    const text = formatEntrySummary({
+      recognition,
+      resolved: [estimated],
+      total,
+    });
+    assert.match(text, /≈510 ккал/);
+    assert.match(text, /рассчитана по типовой рецептуре/);
+  });
+
+  test('выверенная карточка знаком не помечается', () => {
+    const verified: ResolvedItem = {
+      ...withNutrition,
+      product: { nameRu: 'Рис', isVerified: true } as ResolvedItem['product'],
+    };
+    const text = formatEntrySummary({ recognition, resolved: [verified], total });
+    assert.match(text, /510 ккал/);
+    assert.doesNotMatch(text, /≈/);
+    assert.doesNotMatch(text, /рецептуре/);
+  });
+
   test('блюдо, собранное по составу, помечено знаком приблизительности', () => {
     const derived: ResolvedItem = { ...withNutrition, matchedBy: 'derived' };
     const text = formatEntrySummary({ recognition, resolved: [derived], total });

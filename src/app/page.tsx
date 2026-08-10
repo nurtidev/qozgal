@@ -41,6 +41,8 @@ interface DayItem {
   grams: number;
   kcal: number;
   hasNutrition: boolean;
+  /** Числа взяты из непроверенной карточки справочника */
+  isEstimate: boolean;
 }
 
 interface DayEntry {
@@ -358,6 +360,8 @@ function EntryRow({
   // Позиция без нутриентов не должна выглядеть как нулевая калорийность —
   // это разные вещи, и на дневном итоге видно только вторую
   const unknown = entry.items.filter((item) => !item.hasNutrition).length;
+  // Итог приёма пищи собран хотя бы частично из расчётных карточек
+  const estimated = entry.items.some((item) => item.isEstimate);
 
   return (
     <Row
@@ -371,6 +375,9 @@ function EntryRow({
         unknown > 0 ? `${composition} · ${t('noData')}` : composition
       }
       value={`${entry.kcal} ${t('kcal')}`}
+      // Приблизительность итога помечается там же, где сам итог: иначе
+      // расчётная цифра неотличима от выверенной
+      trailing={estimated ? <Chip>{td('estimate')}</Chip> : undefined}
       onClick={onOpen}
       chevron
     />

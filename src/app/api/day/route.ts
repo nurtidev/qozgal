@@ -65,6 +65,10 @@ export const GET = route(async ({ session, request }) => {
         // Расхождение с исходной оценкой модели — материал для калибровки
         estimatedGrams: item.aiEstimatedGrams,
         hasNutrition: item.kcal > 0 || item.proteinG > 0,
+        // Карточки местной кухни заведены расчётными оценками: их числа
+        // расходятся с реальностью на 15–25%, и выглядеть как выверенные
+        // они не должны
+        isEstimate: item.product !== null && item.product?.isVerified === false,
       })),
       kcal: entry.items.reduce((sum, i) => sum + i.kcal, 0),
     })),

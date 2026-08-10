@@ -35,7 +35,15 @@ export const GET = route<Params>(async ({ session, params, t }) => {
   }
 
   const items = await db
-    .select({ item: foodItems, productNameKk: products.nameKk })
+    .select({
+      item: foodItems,
+      productNameKk: products.nameKk,
+      // Проверена ли карточка, из которой взяты числа. Карточки местной
+      // кухни заведены расчётными оценками и расходятся с реальностью
+      // на 15–25% — человек вправе видеть это там, где видит калории,
+      // а не только в поиске при добавлении позиции
+      isVerified: products.isVerified,
+    })
     .from(foodItems)
     // Карточка справочника нужна ради казахского названия: в снапшоте лежит
     // формулировка модели, а она отвечает по-русски
@@ -52,7 +60,7 @@ export const GET = route<Params>(async ({ session, params, t }) => {
     source: entry.source,
     consumedAt: entry.consumedAt,
     consumedOn: entry.consumedOn,
-    items: items.map(({ item: i, productNameKk }) => ({
+    items: items.map(({ item: i, productNameKk, isVerified }) => ({
       id: i.id,
       name: locale === 'kk' && productNameKk ? productNameKk : i.nameRaw,
       grams: i.grams,
@@ -63,6 +71,8 @@ export const GET = route<Params>(async ({ session, params, t }) => {
       confidence: i.aiConfidence,
       estimatedGrams: i.aiEstimatedGrams,
       productId: i.productId,
+      /** Числа из непроверенной карточки справочника — показываем как оценку */
+      isEstimate: i.productId !== null && isVerified === false,
     })),
   });
 });
