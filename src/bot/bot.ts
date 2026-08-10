@@ -233,6 +233,26 @@ bot.on('message:text', async (ctx) => {
   }
 });
 
+/**
+ * Всё остальное, что можно прислать в чат.
+ *
+ * Обработчик стоит последним и ловит то, что не подошло ни под один
+ * предыдущий: голосовые, кружки, стикеры, геометки. Раньше такое
+ * сообщение уходило в тишину, и человек оставался с вопросом, дошло ли
+ * оно вообще, — а молчание в ответ читается как поломка.
+ *
+ * Голосовым отвечаем отдельно: их присылают не по ошибке, а потому что
+ * это самый быстрый способ описать съеденное. Пока мы их не разбираем,
+ * и честнее сказать это прямо, чем предлагать общий список умений.
+ */
+bot.on('message:voice', async (ctx) => {
+  await ctx.reply(speak(ctx.from)('bot.voiceUnsupported'));
+});
+
+bot.on('message', async (ctx) => {
+  await ctx.reply(speak(ctx.from)('bot.unsupported'));
+});
+
 /* ────────────────────── Подтверждение и отмена ─────────────────────── */
 
 bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
@@ -315,12 +335,18 @@ async function handleRecognition(
 
   if (!outcome.ok) {
     // Причина приходит кодом, текст берём из словаря: сообщение об ошибке
-    // на чужом языке — то же самое, что и ошибка без объяснения
-    await ctx.api.editMessageText(
-      chatId,
-      statusMessageId,
-      speak(user)(`bot.failure.${outcome.reason}`),
-    );
+    // на чужом языке — то же самое, что и ошибка без объяснения.
+    //
+    // «Еды не нашлось» звучит по-разному для снимка и для описания:
+    // человеку, написавшему «привет», ответ про фотографию говорит, что
+    // бот его не понял, — а он не понял бота
+    const t = speak(user);
+    const text =
+      outcome.reason === 'not_food' && request.source === 'text'
+        ? t('bot.failure.not_food_text')
+        : t(`bot.failure.${outcome.reason}`);
+
+    await ctx.api.editMessageText(chatId, statusMessageId, text);
     return;
   }
 

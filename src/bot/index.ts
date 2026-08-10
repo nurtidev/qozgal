@@ -1,4 +1,5 @@
 import { bot } from './bot';
+import { publishProfile } from './profile';
 
 /**
  * Запуск бота отдельным процессом через long polling.
@@ -11,11 +12,10 @@ import { bot } from './bot';
  * по ресурсам, но требует публичного https и настроенного секрета.
  */
 async function main() {
-  await bot.api.setMyCommands([
-    { command: 'start', description: 'Начать' },
-    { command: 'today', description: 'Итог за сегодня' },
-    { command: 'app', description: 'Открыть приложение' },
-  ]);
+  // Описание, короткое описание и команды — на обоих языках. Ставятся при
+  // старте: держать публичное лицо бота руками в BotFather значит однажды
+  // обнаружить, что казахского варианта там никогда и не было
+  await publishProfile(bot.api);
 
   console.log('Бот запущен, слушаю обновления…');
 
