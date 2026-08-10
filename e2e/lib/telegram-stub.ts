@@ -116,8 +116,13 @@ function buildStubScript(
     el.type = 'button';
     el.hidden = true;
     el.setAttribute('data-telegram-stub', label);
+    // Закреплены поверх окна, а не в потоке документа: в клиенте эти кнопки
+    // рисуются вне страницы, и при клиентском переходе Next вставлял свою
+    // разметку после них — на скриншоте главное действие оказывалось
+    // над содержимым экрана, чего в Telegram не бывает
     el.style.cssText =
-      'display:block;width:calc(100% - 32px);margin:12px 16px 16px;min-height:48px;' +
+      'position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));' +
+      'z-index:2147483000;display:block;min-height:48px;' +
       'border:0;border-radius:12px;font-size:16px;font-weight:500;' +
       'background:' + theme.button_color + ';color:' + theme.button_text_color + ';';
     return el;
@@ -127,7 +132,21 @@ function buildStubScript(
   var backEl = makeButton('tg-back-button', 'BackButton');
   backEl.style.background = 'transparent';
   backEl.style.color = theme.link_color || theme.button_color;
-  backEl.textContent = 'Назад';
+  // Системная стрелка в клиенте живёт в шапке — заглушка ставит её туда же,
+  // чтобы она не спорила с главной кнопкой за место внизу
+  backEl.style.top = 'calc(8px + env(safe-area-inset-top))';
+  backEl.style.bottom = 'auto';
+  backEl.style.left = '8px';
+  backEl.style.right = 'auto';
+  backEl.style.width = 'auto';
+  backEl.style.minHeight = '32px';
+  backEl.style.padding = '0 10px';
+  backEl.style.fontSize = '14px';
+  backEl.style.borderRadius = '16px';
+  // Плашка под стрелкой: она рисуется поверх страницы, и без подложки
+  // на скриншоте читалась бы как часть содержимого экрана
+  backEl.style.background = theme.secondary_bg_color || '#f4f4f5';
+  backEl.textContent = '‹ Назад';
 
   function mount() {
     if (!document.body) return;

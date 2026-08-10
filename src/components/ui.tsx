@@ -258,9 +258,11 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    // Общая подложка с внутренними отступами: переключатель читается как
-    // один орган управления, а не как ряд отдельных кнопок
-    <div className="flex gap-1 rounded-[var(--radius-control)] bg-[var(--tg-theme-bg-color)] p-1">
+    // Общая подложка с рамкой: переключатель читается как один орган
+    // управления, а не как ряд слов. Рамка обязательна — подложка совпадает
+    // по цвету то с фоном экрана, то с карточкой, и без неё переключатель
+    // с невыбранным значением выглядел просто строкой текста
+    <div className="flex gap-1 rounded-[var(--radius-control)] border border-[var(--tg-theme-hint-color)]/20 bg-[var(--tg-theme-bg-color)] p-1">
       {options.map((option) => {
         const active = option.value === value;
         return (
