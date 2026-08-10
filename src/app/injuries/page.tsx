@@ -15,6 +15,7 @@ import {
 import {
   Screen,
   Card,
+  Chip,
   Hint,
   Button,
   RadioList,
@@ -162,7 +163,7 @@ export default function InjuriesPage() {
 
   return (
     <Screen>
-      <h1 className="text-xl font-semibold">{t('title')}</h1>
+      <h1 className="t-title">{t('title')}</h1>
 
       {/* Оговорка стоит выше списка, а не мелким шрифтом внизу: человек
           должен прочитать её до того, как решит, что приложение знает,
@@ -181,20 +182,25 @@ export default function InjuriesPage() {
         <section className="flex flex-col gap-2">
           {active.map((injury) => (
             <Card key={injury.id} className="flex flex-col gap-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-medium">{t(`areas.${injury.area}`)}</span>
-                <span className="text-sm text-[var(--tg-theme-hint-color)]">
-                  {t(`severities.${injury.severity}`)}
+              <div className="flex items-center justify-between gap-2">
+                <span className="t-body font-medium">
+                  {t(`areas.${injury.area}`)}
                 </span>
+                {/* Степень — капсулой: «врач запретил» и «беспокоит» ведут
+                    к разным последствиям при подборе упражнений, и разница
+                    должна читаться до чтения слов */}
+                <Chip tone={injury.severity === 'watch' ? 'neutral' : 'danger'}>
+                  {t(`severities.${injury.severity}`)}
+                </Chip>
               </div>
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-xs text-[var(--tg-theme-hint-color)]">
+                <span className="t-caption">
                   {t('since', { date: dates.dayMonth(injury.startedOn) })}
                 </span>
                 <button
                   type="button"
                   onClick={() => resolve(injury.id)}
-                  className="text-sm text-[var(--tg-theme-link-color)]"
+                  className="text-[14px] text-[var(--tg-theme-link-color)]"
                 >
                   {t('resolve')}
                 </button>
@@ -206,7 +212,7 @@ export default function InjuriesPage() {
 
       {adding ? (
         <Card className="fade-in flex flex-col gap-4">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {t('whereHurts')}
           </span>
           <RadioList
@@ -218,7 +224,7 @@ export default function InjuriesPage() {
             }))}
           />
 
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {t('howBad')}
           </span>
           <Segmented
@@ -240,19 +246,19 @@ export default function InjuriesPage() {
 
       {closed.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
+          <h2 className="t-label">
             {t('closed')}
           </h2>
           {closed.map((injury) => (
             <Card key={injury.id} className="flex items-baseline justify-between gap-2">
-              <span className="text-sm text-[var(--tg-theme-hint-color)]">
+              <span className="t-caption">
                 {t(`areas.${injury.area}`)} ·{' '}
                 {t('until', { date: dates.dayMonth(injury.resolvedOn!) })}
               </span>
               <button
                 type="button"
                 onClick={() => reopen(injury.id)}
-                className="shrink-0 text-sm text-[var(--tg-theme-link-color)]"
+                className="shrink-0 text-[14px] text-[var(--tg-theme-link-color)]"
               >
                 {t('reopen')}
               </button>

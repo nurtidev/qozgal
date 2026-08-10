@@ -196,7 +196,7 @@ export default function ProgramPage() {
   if (showForm) {
     return (
       <Screen>
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
+        <h1 className="t-title">{t('title')}</h1>
 
         {program === null && (
           <Card>
@@ -205,7 +205,7 @@ export default function ProgramPage() {
         )}
 
         <Card className="flex flex-col gap-3">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {t('daysQuestion')}
           </span>
           <Segmented
@@ -217,7 +217,7 @@ export default function ProgramPage() {
         </Card>
 
         <Card className="flex flex-col gap-3">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {t('placeQuestion')}
           </span>
           <RadioList
@@ -263,11 +263,11 @@ export default function ProgramPage() {
   return (
     <Screen>
       <header className="flex items-baseline justify-between gap-2">
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
+        <h1 className="t-title">{t('title')}</h1>
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="shrink-0 text-sm text-[var(--tg-theme-link-color)]"
+          className="shrink-0 text-[14px] text-[var(--tg-theme-link-color)]"
         >
           {t('rebuild')}
         </button>
@@ -319,9 +319,12 @@ export default function ProgramPage() {
 
                   return (
                     <li key={exercise.id} className="flex flex-col">
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm">{exercise.name}</span>
-                        <span className="tabular shrink-0 text-sm text-[var(--tg-theme-hint-color)]">
+                      <span className="flex items-baseline justify-between gap-3">
+                        <span className="t-body">{exercise.name}</span>
+                        {/* Доза и отдых одной строкой: отдельная строка
+                            «отдых 120 с» повторялась под каждым упражнением
+                            и превращала список в частокол одинаковых слов */}
+                        <span className="t-caption tabular shrink-0">
                           {exercise.durationMin
                             ? t('doseMin', { min: exercise.durationMin })
                             : t('dose', {
@@ -329,30 +332,24 @@ export default function ProgramPage() {
                                 repMin: exercise.repMin ?? 0,
                                 repMax: exercise.repMax ?? 0,
                               })}
+                          {exercise.restSec
+                            ? ` · ${t('rest', { sec: exercise.restSec })}`
+                            : ''}
                         </span>
                       </span>
-                      <span className="flex items-baseline justify-between gap-2">
-                        {exercise.conflicts.length > 0 ? (
-                          <span
-                            className={`text-xs leading-tight ${
-                              medical
-                                ? 'text-[var(--tg-theme-destructive-text-color)]'
-                                : 'text-[var(--tg-theme-hint-color)]'
-                            }`}
-                          >
-                            {medical
-                              ? ti('loadsMedical', { areas })
-                              : ti('loads', { areas })}
-                          </span>
-                        ) : (
-                          <span />
-                        )}
-                        {exercise.restSec && (
-                          <span className="tabular shrink-0 text-xs text-[var(--tg-theme-hint-color)]">
-                            {t('rest', { sec: exercise.restSec })}
-                          </span>
-                        )}
-                      </span>
+                      {exercise.conflicts.length > 0 && (
+                        <span
+                          className={`text-[12px] leading-4 ${
+                            medical
+                              ? 'text-[var(--tg-theme-destructive-text-color)]'
+                              : 'text-[var(--tg-theme-hint-color)]'
+                          }`}
+                        >
+                          {medical
+                            ? ti('loadsMedical', { areas })
+                            : ti('loads', { areas })}
+                        </span>
+                      )}
                     </li>
                   );
                 })}
@@ -380,14 +377,14 @@ export default function ProgramPage() {
           бы как полная программа, а это неправда */}
       {program.skipped.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
+          <h2 className="t-label">
             {t('skippedTitle')}
           </h2>
           <Card className="flex flex-col gap-1">
             {program.skipped.map((slot) => (
               <span
                 key={`${slot.pattern}-${slot.reason}`}
-                className="text-sm text-[var(--tg-theme-hint-color)]"
+                className="t-caption"
               >
                 {slot.reason === 'injury'
                   ? t('skippedInjury', {

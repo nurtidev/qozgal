@@ -1,10 +1,57 @@
 @import 'tailwindcss';
 
 /**
+ * Шрифт интерфейса — IBM Plex Sans (OFL, public/fonts/LICENSE.txt).
+ *
+ * Лежит у нас, а не грузится со стороннего домена: Mini App открывается
+ * внутри клиента Telegram, и лишний внешний запрос — это лишняя причина
+ * увидеть системный шрифт вместо своего.
+ *
+ * Три подмножества вместо одного файла: казахские буквы разбросаны по двум
+ * кириллическим диапазонам (ұ и і — в cyrillic, ә ғ қ ң ө ү һ — в
+ * cyrillic-ext), и без второго файла казахский интерфейс поехал бы на
+ * запасной шрифт прямо посреди слова. Начертание вариативное, 400–600:
+ * средний вес настоящий, а не подделанный браузером.
+ */
+@font-face {
+  font-family: 'Plex';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/plex-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Plex';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/plex-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: 'Plex';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/plex-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F,
+    U+FE2E-FE2F;
+}
+
+/**
  * Палитра берётся у клиента Telegram через переменные --tg-theme-*,
  * которые проставляет applyTheme() при старте. Значения ниже — запасные,
  * на случай если приложение открыли вне Telegram или клиент не передал
  * тему: без них интерфейс остался бы нечитаемым.
+ *
+ * Своими остаются только те цвета, которые несут смысл, а не оформление:
+ * нутриенты и предупреждение. Фон, текст и акцент — всегда клиентские,
+ * иначе в чужой теме приложение выглядит как вставленная чужая страница.
  */
 :root {
   --tg-theme-bg-color: #ffffff;
@@ -20,6 +67,18 @@
   --accent-protein: #4a90d9;
   --accent-fat: #f0a04b;
   --accent-carbs: #7cb342;
+
+  --radius-card: 16px;
+  --radius-control: 12px;
+  --radius-chip: 8px;
+}
+
+/* В тёмной теме те же оттенки садятся: поднимаем светлоту, чтобы полосы
+   нутриентов оставались различимы на тёмном фоне */
+[data-theme='dark'] {
+  --accent-protein: #6aa9ee;
+  --accent-fat: #f5b76b;
+  --accent-carbs: #96cf5f;
 }
 
 @theme inline {
@@ -40,12 +99,75 @@ body {
 }
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Plex', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    system-ui, sans-serif;
   /* Safe-area внизу: на айфонах без неё кнопки уезжают под системную полосу */
   padding-bottom: env(safe-area-inset-bottom);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+}
+
+/* ─────────────────────────── Типографика ───────────────────────────── */
+
+/**
+ * Шкала из пяти ролей вместо произвольных размеров по месту.
+ *
+ * Числа выделены в отдельные роли не ради красоты: приложение про них
+ * и есть. Дневной остаток, вес на штанге и обхват талии — то, за чем
+ * человек открывает экран, а подписи вокруг только объясняют, что это
+ * за число. Поэтому цифры крупные, табличные и с поджатым межбуквенным
+ * просветом, а подписи — мелкие и спокойные.
+ */
+.t-title {
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.t-body {
+  font-size: 15px;
+  line-height: 21px;
+}
+
+.t-caption {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--tg-theme-hint-color);
+}
+
+/* Микроподпись секции. Заглавные с разрядкой читаются как служебная
+   пометка и не спорят за внимание с содержимым под ней */
+.t-label {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--tg-theme-hint-color);
+}
+
+.n-xl {
+  font-size: 44px;
+  line-height: 44px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.n-l {
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.n-m {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Числа в таблицах и итогах не должны прыгать по ширине при изменении */
@@ -53,7 +175,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Плавное появление содержимого после загрузки данных */
+/**
+ * Волосяной разделитель.
+ *
+ * Прозрачность, а не готовый серый: цвет подсказки приходит от клиента
+ * и в тёмной теме другой, а color-mix понимают не все вебвью, в которых
+ * открывают Mini App.
+ */
+.hairline {
+  background: var(--tg-theme-hint-color);
+  opacity: 0.16;
+}
+
+/* ──────────────────────────── Движение ─────────────────────────────── */
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -84,12 +219,19 @@ body {
   animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
 
+/* Сегменты дуги дня вырастают из нуля: движение показывает, что число
+   в центре — итог этих кусков, а не отдельная надпись рядом с кольцом */
+.arc-seg {
+  transition: stroke-dasharray 0.5s cubic-bezier(0.32, 0.72, 0.35, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .fade-in {
+  .fade-in,
+  .skeleton {
     animation: none;
   }
 
-  .skeleton {
-    animation: none;
+  .arc-seg {
+    transition: none;
   }
 }

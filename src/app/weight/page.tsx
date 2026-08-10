@@ -178,9 +178,9 @@ export default function WeightPage() {
   return (
     <Screen>
       <header className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
+        <h1 className="t-title">{t('title')}</h1>
         {latest && (
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {dates.dayMonthShort(latest.date)}
           </span>
         )}
@@ -195,11 +195,11 @@ export default function WeightPage() {
             <span className="tabular text-4xl font-semibold">
               {latest.average.toFixed(1)}
             </span>
-            <span className="text-sm text-[var(--tg-theme-hint-color)]">
+            <span className="t-caption">
               {t('average')}
             </span>
           </div>
-          <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption tabular">
             {t('last', { kg: latest.raw })}
             {target !== null ? ` · ${t('target', { kg: target })}` : ''}
           </span>

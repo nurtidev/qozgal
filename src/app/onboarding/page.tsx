@@ -316,7 +316,7 @@ function PlanSummary({ plan, onDone }: { plan: Plan; onDone: () => void }) {
 
       <Card className="flex flex-col items-center gap-1 py-6">
         <span className="tabular text-5xl font-semibold">{plan.kcalTarget}</span>
-        <span className="text-sm text-[var(--tg-theme-hint-color)]">
+        <span className="t-caption">
           {t('perDay')}
         </span>
       </Card>
@@ -332,7 +332,7 @@ function PlanSummary({ plan, onDone }: { plan: Plan; onDone: () => void }) {
               <span className="tabular text-xl font-medium">
                 {value} {tc('g')}
               </span>
-              <span className="text-xs text-[var(--tg-theme-hint-color)]">{label}</span>
+              <span className="t-caption">{label}</span>
             </div>
           ))}
         </div>

@@ -202,7 +202,7 @@ export default function EntryPage() {
   if (missing) {
     return (
       <Screen>
-        <h1 className="text-xl font-semibold">{t('notFound')}</h1>
+        <h1 className="t-title">{t('notFound')}</h1>
         <Hint>{t('notFoundHint')}</Hint>
         <div className="mt-auto pt-4">
           <Button onClick={() => router.replace('/')}>{t('toDiary')}</Button>
@@ -325,15 +325,15 @@ export default function EntryPage() {
 
   return (
     <Screen>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">
-          {entry.status === 'pending' ? t('checkTitle') : t('title')}
-        </h1>
-        <span className="text-sm text-[var(--tg-theme-hint-color)]">
+      <header className="flex flex-col">
+        <span className="t-label">
           {dates.dayMonthTime(entry.consumedAt)}
           {sourceKey ? ` · ${t(sourceKey)}` : ''}
           {entry.status === 'discarded' ? ` · ${t('discarded')}` : ''}
         </span>
+        <h1 className="t-title mt-0.5">
+          {entry.status === 'pending' ? t('checkTitle') : t('title')}
+        </h1>
       </header>
 
       <Segmented
@@ -342,21 +342,22 @@ export default function EntryPage() {
         onChange={setMealType}
       />
 
-      <Card className="flex flex-col gap-1">
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
-            {t('total')}
+      {/* Итог — главное число экрана: ради него человек сюда и зашёл,
+          остальное объясняет, из чего оно сложилось */}
+      <Card className="flex items-end justify-between gap-3">
+        <span className="flex flex-col">
+          <span className="t-label">{t('total')}</span>
+          <span className="t-caption tabular mt-1">
+            {tm('short', {
+              protein: totals.proteinG,
+              fat: totals.fatG,
+              carbs: totals.carbsG,
+            })}
           </span>
-          <span className="tabular text-2xl font-semibold">
-            {totals.kcal} {tc('kcal')}
-          </span>
-        </div>
-        <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
-          {tm('short', {
-            protein: totals.proteinG,
-            fat: totals.fatG,
-            carbs: totals.carbsG,
-          })}
+        </span>
+        <span className="n-l">
+          {totals.kcal}
+          <span className="t-caption ml-1">{tc('kcal')}</span>
         </span>
       </Card>
 
@@ -526,7 +527,7 @@ function AddItem({
         inputMode="text"
         placeholder={t('searchPlaceholder')}
         onChange={(e) => setQuery(e.target.value)}
-        className="min-h-12 w-full rounded-xl bg-[var(--tg-theme-bg-color)] px-4 text-base outline-none"
+        className="t-body min-h-12 w-full rounded-[var(--radius-control)] bg-[var(--tg-theme-bg-color)] px-4 outline-none"
       />
 
       {error && <ErrorNote>{error}</ErrorNote>}
@@ -543,11 +544,11 @@ function AddItem({
                 type="button"
                 disabled={busy}
                 onClick={() => add(product)}
-                className="flex w-full min-h-14 items-center justify-between gap-3 border-b border-[var(--tg-theme-bg-color)] py-2 text-left last:border-0 active:opacity-60 disabled:opacity-40"
+                className="flex w-full min-h-14 items-center justify-between gap-3 py-2 text-left transition-opacity active:opacity-60 disabled:opacity-40"
               >
                 <span className="flex flex-col">
-                  <span className="text-base leading-tight">{product.name}</span>
-                  <span className="tabular text-xs text-[var(--tg-theme-hint-color)]">
+                  <span className="t-body leading-tight">{product.name}</span>
+                  <span className="t-caption tabular">
                     {t('per100', { kcal: product.kcalPer100g })}
                     {/* Карточки местной кухни — расчётные оценки, а не
                         измерения; человек вправе знать это до выбора */}
@@ -555,7 +556,7 @@ function AddItem({
                   </span>
                 </span>
                 {product.defaultPortionG && (
-                  <span className="tabular shrink-0 text-sm text-[var(--tg-theme-hint-color)]">
+                  <span className="t-caption tabular shrink-0">
                     {product.defaultPortionG} {tc('g')}
                   </span>
                 )}
@@ -598,13 +599,13 @@ function ItemRow({
   if (removed) {
     return (
       <Card className="flex items-center justify-between gap-3">
-        <span className="truncate text-[var(--tg-theme-hint-color)] line-through">
+        <span className="t-body truncate text-[var(--tg-theme-hint-color)] line-through">
           {item.name}
         </span>
         <button
           type="button"
           onClick={onRestore}
-          className="shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-[var(--tg-theme-link-color)]"
+          className="shrink-0 rounded-lg px-3 py-2 text-[14px] font-medium text-[var(--tg-theme-link-color)]"
         >
           {t('restore')}
         </button>
@@ -636,14 +637,21 @@ function ItemRow({
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate font-medium">{item.name}</span>
-        <span className="tabular shrink-0 text-sm">
-          {known && n ? `${n.kcal} ${tc('kcal')}` : tc('noData')}
+        <span className="t-body truncate font-medium">{item.name}</span>
+        <span className="n-m shrink-0">
+          {known && n ? (
+            <>
+              {n.kcal}
+              <span className="t-caption ml-1">{tc('kcal')}</span>
+            </>
+          ) : (
+            <span className="t-caption">{tc('noData')}</span>
+          )}
         </span>
       </div>
 
       {known && n && (
-        <span className="tabular text-xs text-[var(--tg-theme-hint-color)]">
+        <span className="t-caption tabular -mt-2">
           {tm('short', { protein: n.proteinG, fat: n.fatG, carbs: n.carbsG })}
         </span>
       )}
@@ -661,13 +669,13 @@ function ItemRow({
             inputMode="decimal"
             onChange={(e) => onChange(e.target.value)}
             aria-label={t('itemWeight', { name: item.name })}
-            className={`tabular min-h-12 w-full rounded-xl bg-[var(--tg-theme-bg-color)] px-4 pr-8 text-center text-base outline-none ${
+            className={`n-m min-h-12 w-full rounded-[var(--radius-control)] bg-[var(--tg-theme-bg-color)] px-4 pr-8 text-center outline-none ${
               grams === null
                 ? 'ring-2 ring-[var(--tg-theme-destructive-text-color)]'
                 : ''
             }`}
           />
-          <span className="pointer-events-none absolute right-3 text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption pointer-events-none absolute right-3">
             {tc('g')}
           </span>
         </span>
@@ -682,7 +690,7 @@ function ItemRow({
           type="button"
           onClick={onRemove}
           aria-label={t('removeItem', { name: item.name })}
-          className="min-h-12 w-10 shrink-0 rounded-xl text-lg text-[var(--tg-theme-hint-color)] active:opacity-60"
+          className="min-h-12 w-10 shrink-0 rounded-[var(--radius-control)] text-[17px] text-[var(--tg-theme-hint-color)] transition-opacity active:opacity-60"
         >
           ✕
         </button>
@@ -690,7 +698,7 @@ function ItemRow({
 
       {note && (
         <span
-          className={`text-xs leading-snug ${
+          className={`text-[12px] leading-4 ${
             note.bad
               ? 'text-[var(--tg-theme-destructive-text-color)]'
               : 'text-[var(--tg-theme-hint-color)]'
@@ -721,7 +729,7 @@ function StepButton({
         onClick();
       }}
       // Те же 48 px, что и у остальных кнопок: пальцем в мелкую не попасть
-      className="min-h-12 w-12 shrink-0 rounded-xl bg-[var(--tg-theme-bg-color)] text-xl font-medium active:opacity-70 disabled:opacity-40"
+      className="min-h-12 w-12 shrink-0 rounded-[var(--radius-control)] bg-[var(--tg-theme-bg-color)] text-[19px] font-medium transition-opacity active:opacity-70 disabled:opacity-40"
     >
       {label}
     </button>

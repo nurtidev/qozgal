@@ -255,11 +255,11 @@ export default function WorkoutPage() {
   return (
     <Screen>
       <header className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold">
+        <h1 className="t-title">
           {dates.dayMonth(workout.performedOn)}
         </h1>
         {workout.volumeKg > 0 && (
-          <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption tabular">
             {workout.volumeKg.toLocaleString('ru-RU')} {tc('kg')}
           </span>
         )}
@@ -272,7 +272,7 @@ export default function WorkoutPage() {
         <Card className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-medium">{t('planDay')}</span>
-            <span className="text-sm text-[var(--tg-theme-hint-color)]">
+            <span className="t-caption">
               {tp('day', { index: workout.planDay.dayIndex })} ·{' '}
               {tp(`focus.${workout.planDay.focus}` as 'focus.push')}
             </span>
@@ -296,7 +296,7 @@ export default function WorkoutPage() {
                       });
                       setPicking(false);
                     }}
-                    className="flex min-h-11 w-full items-baseline justify-between gap-2 border-b border-[var(--tg-theme-bg-color)] py-1 text-left last:border-0"
+                    className="flex min-h-11 w-full items-baseline justify-between gap-2 border-b border-[var(--tg-theme-hint-color)]/15 py-1 text-left last:border-0"
                   >
                     <span className="flex items-baseline gap-2">
                       <span
@@ -317,7 +317,7 @@ export default function WorkoutPage() {
                         {planned.name}
                       </span>
                     </span>
-                    <span className="tabular shrink-0 text-xs text-[var(--tg-theme-hint-color)]">
+                    <span className="t-caption tabular shrink-0">
                       {planned.durationMin
                         ? tp('doseMin', { min: planned.durationMin })
                         : tp('dose', {
@@ -335,7 +335,7 @@ export default function WorkoutPage() {
       )}
 
       <Card className="flex items-center justify-between gap-3">
-        <span className="text-sm text-[var(--tg-theme-hint-color)]">
+        <span className="t-caption">
           {t('duration')}
         </span>
         <span className="flex w-28 items-center gap-2">
@@ -345,9 +345,9 @@ export default function WorkoutPage() {
             placeholder="60"
             aria-label={t('duration')}
             onChange={(e) => setDuration(e.target.value)}
-            className="tabular min-h-11 w-full rounded-xl bg-[var(--tg-theme-bg-color)] px-3 text-center text-base outline-none"
+            className="tabular min-h-11 w-full rounded-[var(--radius-control)] bg-[var(--tg-theme-bg-color)] px-3 text-center text-base outline-none"
           />
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {t('min')}
           </span>
         </span>
@@ -361,7 +361,7 @@ export default function WorkoutPage() {
               {sets[0].previousBest && (
                 // Прошлый результат — то, от чего человек отталкивается:
                 // смысл журнала в том, чтобы сегодня сделать больше
-                <span className="tabular shrink-0 text-xs text-[var(--tg-theme-hint-color)]">
+                <span className="t-caption tabular shrink-0">
                   {t('previous', {
                     weight: sets[0].previousBest.weightKg,
                     reps: sets[0].previousBest.reps,
@@ -410,7 +410,7 @@ export default function WorkoutPage() {
                   setChosen(null);
                   openPicker();
                 }}
-                className="shrink-0 text-sm text-[var(--tg-theme-link-color)]"
+                className="shrink-0 text-[14px] text-[var(--tg-theme-link-color)]"
               >
                 {t('change')}
               </button>
@@ -460,7 +460,7 @@ export default function WorkoutPage() {
               if (inGroup.length === 0) return null;
               return (
                 <li key={group}>
-                  <span className="block px-1 pt-3 pb-1 text-xs text-[var(--tg-theme-hint-color)]">
+                  <span className="t-label block px-1 pt-3 pb-1.5">
                     {t(`groups.${group}` as 'groups.legs')}
                   </span>
                   {inGroup.map((exercise) => {
@@ -480,7 +480,7 @@ export default function WorkoutPage() {
                           setChosen(exercise);
                           setPicking(false);
                         }}
-                        className="flex min-h-12 w-full items-center justify-between gap-2 border-b border-[var(--tg-theme-bg-color)] py-1.5 text-left last:border-0"
+                        className="flex min-h-12 w-full items-center justify-between gap-2 border-b border-[var(--tg-theme-hint-color)]/15 py-1.5 text-left last:border-0"
                       >
                         <span className="flex flex-col">
                           <span>{exercise.name}</span>
@@ -499,7 +499,7 @@ export default function WorkoutPage() {
                           )}
                         </span>
                         {exercise.equipment && (
-                          <span className="shrink-0 text-xs text-[var(--tg-theme-hint-color)]">
+                          <span className="t-caption shrink-0">
                             {exercise.equipment}
                           </span>
                         )}

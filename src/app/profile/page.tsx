@@ -215,17 +215,17 @@ export default function ProfilePage() {
 
   return (
     <Screen>
-      <h1 className="text-xl font-semibold">{t('title')}</h1>
+      <h1 className="t-title">{t('title')}</h1>
 
       {plan && (
         <Card className="flex flex-col gap-2">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {t('recalculated')}
           </span>
           <span className="tabular text-3xl font-semibold">
             {plan.kcalTarget} {tc('kcal')}
           </span>
-          <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption tabular">
             {tm('short', {
               protein: plan.macros.proteinG,
               fat: plan.macros.fatG,

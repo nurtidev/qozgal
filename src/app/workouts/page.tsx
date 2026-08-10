@@ -15,6 +15,8 @@ import {
 import {
   Screen,
   Card,
+  Row,
+  Divider,
   Hint,
   Button,
   ScreenSkeleton,
@@ -129,7 +131,7 @@ export default function WorkoutsPage() {
 
   return (
     <Screen>
-      <h1 className="text-xl font-semibold">{t('title')}</h1>
+      <h1 className="t-title">{t('title')}</h1>
 
       {/* Программа стоит выше журнала: она отвечает на вопрос «что делать
           сегодня», а журнал — на вопрос «что я уже сделал» */}
@@ -140,10 +142,10 @@ export default function WorkoutsPage() {
       >
         <Card className="flex items-center justify-between gap-3">
           <span className="flex flex-col">
-            <span className="text-sm text-[var(--tg-theme-hint-color)]">
+            <span className="t-caption">
               {program ? t('planNext', { day: nextDayLabel(program, tp) }) : t('planNone')}
             </span>
-            <span className="text-lg font-medium">
+            <span className="n-m">
               {program ? t('planOpen') : t('planBuild')}
             </span>
           </span>
@@ -153,10 +155,10 @@ export default function WorkoutsPage() {
 
       {workouts.length > 0 && (
         <Card className="flex items-baseline justify-between">
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {t('weekVolume')}
           </span>
-          <span className="tabular text-lg font-medium">
+          <span className="n-m">
             {weekVolume.toLocaleString('ru-RU')} {tc('kg')}
           </span>
         </Card>
@@ -169,41 +171,40 @@ export default function WorkoutsPage() {
           <Hint>{t('empty')}</Hint>
         </Card>
       ) : (
-        <section className="flex flex-col gap-2">
-          {workouts.map((workout) => (
-            <button
-              key={workout.id}
-              onClick={() => router.push(`/workouts/${workout.id}`)}
-              className="w-full text-left"
-            >
-              <Card className="flex flex-col gap-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-medium">
-                    {dates.dayMonth(workout.performedOn)}
-                  </span>
-                  <span className="tabular text-sm">
-                    {workout.volumeKg > 0
-                      ? `${workout.volumeKg.toLocaleString('ru-RU')} ${tc('kg')}`
-                      : t('noVolume')}
-                  </span>
-                </div>
-                <span className="truncate text-sm text-[var(--tg-theme-hint-color)]">
-                  {workout.exercises.length > 0
-                    ? workout.exercises.join(' · ')
-                    : t('emptyWorkout')}
-                </span>
-                {workout.setCount > 0 && (
-                  <span className="tabular text-xs text-[var(--tg-theme-hint-color)]">
-                    {t('sets', { count: workout.setCount })}
-                    {workout.durationMin
-                      ? ` · ${t('minutes', { count: workout.durationMin })}`
-                      : ''}
-                  </span>
-                )}
-              </Card>
-            </button>
+        // Журнал одной ведомостью, а не столбиком карточек: тренировок
+        // за месяц накапливается два десятка, и каждая в своей рамке
+        // превращает список в лестницу, по которой трудно вести глазом
+        <Card className="flex flex-col">
+          {workouts.map((workout, index) => (
+            <div key={workout.id}>
+              {index > 0 && <Divider />}
+              <Row
+                title={dates.dayMonth(workout.performedOn)}
+                caption={
+                  workout.exercises.length > 0
+                    ? `${workout.exercises.join(' · ')}${
+                        workout.setCount > 0
+                          ? ` · ${t('sets', { count: workout.setCount })}`
+                          : ''
+                      }`
+                    : t('emptyWorkout')
+                }
+                value={
+                  workout.volumeKg > 0
+                    ? `${workout.volumeKg.toLocaleString('ru-RU')} ${tc('kg')}`
+                    : undefined
+                }
+                trailing={
+                  workout.volumeKg > 0 ? undefined : (
+                    <span className="t-caption">{t('noVolume')}</span>
+                  )
+                }
+                onClick={() => router.push(`/workouts/${workout.id}`)}
+                chevron
+              />
+            </div>
           ))}
-        </section>
+        </Card>
       )}
 
       <Hint>{t('caloriesHint')}</Hint>

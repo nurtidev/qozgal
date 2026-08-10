@@ -16,6 +16,9 @@ import {
 import {
   Screen,
   Card,
+  Divider,
+  Row,
+  Section,
   Hint,
   Button,
   Field,
@@ -243,9 +246,9 @@ export default function MeasurementsPage() {
   return (
     <Screen>
       <header className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
+        <h1 className="t-title">{t('title')}</h1>
         {last && (
-          <span className="text-sm text-[var(--tg-theme-hint-color)]">
+          <span className="t-caption">
             {dates.dayMonthShort(last.measuredOn)}
           </span>
         )}
@@ -259,12 +262,12 @@ export default function MeasurementsPage() {
                 <span className="tabular text-4xl font-semibold">
                   {last.bodyFatPct}%
                 </span>
-                <span className="text-sm text-[var(--tg-theme-hint-color)]">
+                <span className="t-caption">
                   {t('fat')}
                 </span>
               </div>
               {lean !== null && weightKg !== null && (
-                <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
+                <span className="t-caption tabular">
                   {t('lean', { lean, weight: weightKg })}
                 </span>
               )}
@@ -348,24 +351,29 @@ export default function MeasurementsPage() {
       <Hint>{t('hint')}</Hint>
 
       {history.length > 1 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
-            {t('history')}
-          </h2>
-          {history.slice(0, 10).map((m) => (
-            <Card key={m.measuredOn} className="flex items-baseline justify-between">
-              <span className="text-sm">
-                {dates.dayMonthShort(m.measuredOn)}
-              </span>
-              <span className="tabular text-sm text-[var(--tg-theme-hint-color)]">
-                {m.bodyFatPct != null
-                  ? `${t('historyFat', { pct: m.bodyFatPct })} · `
-                  : ''}
-                {t('historyWaist', { waist: m.waistCm })}
-              </span>
-            </Card>
-          ))}
-        </section>
+        // История — ведомость с разделителями: замеры сравнивают между
+        // собой, а десяток отдельных карточек мешает вести взгляд по
+        // столбцу процента жира
+        <Section label={t('history')}>
+          <Card className="flex flex-col">
+            {history.slice(0, 10).map((m, index) => (
+              <div key={m.measuredOn}>
+                {index > 0 && <Divider />}
+                <Row
+                  title={dates.dayMonthShort(m.measuredOn)}
+                  trailing={
+                    <span className="t-caption tabular">
+                      {m.bodyFatPct != null
+                        ? `${t('historyFat', { pct: m.bodyFatPct })} · `
+                        : ''}
+                      {t('historyWaist', { waist: m.waistCm })}
+                    </span>
+                  }
+                />
+              </div>
+            ))}
+          </Card>
+        </Section>
       )}
     </Screen>
   );

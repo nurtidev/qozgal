@@ -9,9 +9,13 @@ import { useDates } from '@/i18n/dates';
 import {
   Screen,
   Card,
+  Section,
+  Row,
+  Divider,
+  Chip,
   Hint,
   Button,
-  CalorieRing,
+  DayArc,
   MacroBar,
   ScreenSkeleton,
   ErrorNote,
@@ -132,31 +136,35 @@ export default function DashboardPage() {
 
   return (
     <Screen>
-      <header className="flex flex-col gap-3">
-        <h1 className="text-xl font-semibold">
-          {me.user.firstName
-            ? t('greeting', { name: me.user.firstName })
-            : t('title')}
-        </h1>
+      {/* Шапка-приборная: слева дата, справа шаг по дням. Приветствие
+          ушло в подпись — на экране, куда заходят по нескольку раз в день,
+          дата важнее имени */}
+      <header className="flex items-end justify-between gap-3">
+        <div className="flex flex-col">
+          {/* Приветствие сюда не вернулось намеренно: на экран, куда заходят
+              по пять раз в день, «Привет, имя» перестаёт читаться через
+              неделю, а место занимает то же, что и дата */}
+          <span className="t-label">{t('title')}</span>
+          <h1 className="t-title mt-0.5">
+            {isToday ? t('today') : dates.dayMonth(day.date)}
+          </h1>
+        </div>
 
-        <div className="flex items-center justify-between gap-2">
-          <DayStep label="‹" title={t('prevDay')} onClick={() => setDate(shiftDate(day.date, -1))} />
-          <button
-            type="button"
-            // Тап по дате возвращает на сегодня — короче, чем отщёлкивать
-            // назад по одному дню после прогулки по неделе
-            onClick={() => setDate(me.today)}
-            className="flex flex-col items-center"
-          >
-            <span className="text-base font-medium">
-              {isToday ? t('today') : dates.dayMonth(day.date)}
-            </span>
-            {!isToday && (
-              <span className="text-xs text-[var(--tg-theme-link-color)]">
-                {t('backToToday')}
-              </span>
-            )}
-          </button>
+        <div className="flex items-center gap-1.5">
+          {!isToday && (
+            <button
+              type="button"
+              onClick={() => setDate(me.today)}
+              className="t-caption min-h-9 px-2 text-[var(--tg-theme-link-color)]"
+            >
+              {t('backToToday')}
+            </button>
+          )}
+          <DayStep
+            label="‹"
+            title={t('prevDay')}
+            onClick={() => setDate(shiftDate(day.date, -1))}
+          />
           <DayStep
             label="›"
             title={t('nextDay')}
@@ -170,11 +178,18 @@ export default function DashboardPage() {
 
       {me.goal ? (
         <>
-          <div className="fade-in flex justify-center py-2">
-            <CalorieRing eaten={day.totals.kcal} target={me.goal.kcalTarget} />
+          <div className="fade-in flex justify-center py-1">
+            <DayArc
+              eaten={day.totals.kcal}
+              target={me.goal.kcalTarget}
+              segments={confirmed.map((entry) => ({
+                id: entry.id,
+                kcal: entry.kcal,
+              }))}
+            />
           </div>
 
-          <Card className="flex flex-col gap-3">
+          <Card className="flex flex-col gap-3.5">
             <MacroBar
               label={tm('protein')}
               value={day.totals.proteinG}
@@ -202,66 +217,80 @@ export default function DashboardPage() {
       )}
 
       {pending.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
-            {t('pending')}
-          </h2>
-          {pending.map((entry) => (
-            <EntryCard
-              key={entry.id}
-              entry={entry}
-              onOpen={() => router.push(`/entry/${entry.id}`)}
-            />
-          ))}
-        </section>
+        <Section label={t('pending')}>
+          <Card className="flex flex-col">
+            {pending.map((entry, index) => (
+              <div key={entry.id}>
+                {index > 0 && <Divider />}
+                <EntryRow
+                  entry={entry}
+                  pending
+                  onOpen={() => router.push(`/entry/${entry.id}`)}
+                />
+              </div>
+            ))}
+          </Card>
+        </Section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-[var(--tg-theme-hint-color)]">
-          {isToday ? t('eatenToday') : t('eatenOn')}
-        </h2>
-
+      <Section label={isToday ? t('eatenToday') : t('eatenOn')}>
         {confirmed.length === 0 ? (
           <Card>
             <Hint>{isToday ? t('empty') : t('emptyDay')}</Hint>
           </Card>
         ) : (
-          confirmed.map((entry) => (
-            <EntryCard
-              key={entry.id}
-              entry={entry}
-              onOpen={() => router.push(`/entry/${entry.id}`)}
-            />
-          ))
+          <Card className="flex flex-col">
+            {confirmed.map((entry, index) => (
+              <div key={entry.id}>
+                {index > 0 && <Divider />}
+                <EntryRow
+                  entry={entry}
+                  onOpen={() => router.push(`/entry/${entry.id}`)}
+                />
+              </div>
+            ))}
+          </Card>
         )}
-      </section>
+      </Section>
 
-      <section className="flex flex-col gap-2">
-        <NavRow
-          caption={t('weight')}
-          title={
-            me.weight ? `${me.weight.kg} ${tc('kg')}` : t('weightEmpty')
-          }
-          onOpen={() => router.push('/weight')}
-        />
-        <NavRow
-          title={t('measurements')}
-          onOpen={() => router.push('/measurements')}
-        />
-        <NavRow
-          title={t('workouts')}
-          onOpen={() => router.push('/workouts')}
-        />
-        <NavRow
-          title={t('injuries')}
-          onOpen={() => router.push('/injuries')}
-        />
-        <NavRow
-          title={t('profile')}
-          caption={me.goal ? `${me.goal.kcalTarget} ${tc('kcal')}` : undefined}
-          onOpen={() => router.push('/profile')}
-        />
-      </section>
+      {/* Разделы одной группой строк, а не столбиком карточек: это переходы,
+          а не показания, и каждому не нужна своя рамка */}
+      <Section>
+        <Card className="flex flex-col">
+          <Row
+            title={t('weight')}
+            value={me.weight ? `${me.weight.kg} ${tc('kg')}` : t('weightEmpty')}
+            valueTone={me.weight ? 'normal' : 'hint'}
+            onClick={() => router.push('/weight')}
+            chevron
+          />
+          <Divider />
+          <Row
+            title={t('measurements')}
+            onClick={() => router.push('/measurements')}
+            chevron
+          />
+          <Divider />
+          <Row
+            title={t('workouts')}
+            onClick={() => router.push('/workouts')}
+            chevron
+          />
+          <Divider />
+          <Row
+            title={t('injuries')}
+            onClick={() => router.push('/injuries')}
+            chevron
+          />
+          <Divider />
+          <Row
+            title={t('profile')}
+            value={me.goal ? `${me.goal.kcalTarget} ${tc('kcal')}` : undefined}
+            onClick={() => router.push('/profile')}
+            chevron
+          />
+        </Card>
+      </Section>
     </Screen>
   );
 }
@@ -284,7 +313,7 @@ function DayStep({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="min-h-11 w-11 shrink-0 rounded-xl bg-[var(--tg-theme-secondary-bg-color)] text-lg active:opacity-70 disabled:opacity-30"
+      className="min-h-10 w-10 shrink-0 rounded-[var(--radius-control)] bg-[var(--tg-theme-secondary-bg-color)] text-[17px] transition-opacity active:opacity-60 disabled:opacity-30"
     >
       {label}
     </button>
@@ -302,75 +331,48 @@ function shiftDate(iso: string, days: number): string {
   ].join('-');
 }
 
-/** Строка-переход в раздел: название, текущее значение над ним и стрелка */
-function NavRow({
-  title,
-  caption,
-  onOpen,
-}: {
-  title: string;
-  caption?: string;
-  onOpen: () => void;
-}) {
-  return (
-    <button onClick={onOpen} className="w-full text-left">
-      <Card className="flex items-center justify-between gap-3">
-        <div className="flex flex-col">
-          {caption && (
-            <span className="text-sm text-[var(--tg-theme-hint-color)]">
-              {caption}
-            </span>
-          )}
-          <span className="tabular text-lg font-medium">{title}</span>
-        </div>
-        <span className="text-lg text-[var(--tg-theme-hint-color)]">›</span>
-      </Card>
-    </button>
-  );
-}
-
-function EntryCard({
+/**
+ * Приём пищи строкой ведомости: название, состав одной строкой, калории.
+ *
+ * Состав свёрнут в перечисление вместо списка позиций — на дашборде он
+ * нужен, чтобы узнать запись, а не проверить граммовку; для этого есть
+ * экран записи.
+ */
+function EntryRow({
   entry,
   onOpen,
+  pending,
 }: {
   entry: DayEntry;
   onOpen: () => void;
+  pending?: boolean;
 }) {
   const t = useTranslations('common');
   const meals = useTranslations('meals');
+  const td = useTranslations('dashboard');
+
+  const composition = entry.items
+    .map((item) => `${item.name} ${Math.round(item.grams)} ${t('g')}`)
+    .join(' · ');
+
+  // Позиция без нутриентов не должна выглядеть как нулевая калорийность —
+  // это разные вещи, и на дневном итоге видно только вторую
+  const unknown = entry.items.filter((item) => !item.hasNutrition).length;
 
   return (
-    <button onClick={onOpen} className="w-full text-left">
-      <Card
-        className={
-          entry.status === 'pending'
-            ? 'border border-dashed border-[var(--tg-theme-hint-color)]/40'
-            : ''
-        }
-      >
-        <div className="flex items-baseline justify-between">
-          <span className="font-medium">{meals(entry.mealType)}</span>
-          <span className="tabular text-sm">
-            {entry.kcal} {t('kcal')}
-          </span>
-        </div>
-        <ul className="mt-2 flex flex-col gap-1">
-          {entry.items.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-baseline justify-between text-sm text-[var(--tg-theme-hint-color)]"
-            >
-              <span className="truncate pr-2">{item.name}</span>
-              <span className="tabular shrink-0">
-                {item.grams} {t('g')}
-                {/* Позиция без нутриентов не должна выглядеть как нулевая
-                    калорийность — это разные вещи */}
-                {!item.hasNutrition && ` · ${t('noData')}`}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
-    </button>
+    <Row
+      title={
+        <span className="flex items-center gap-2">
+          {meals(entry.mealType)}
+          {pending && <Chip>{td('draft')}</Chip>}
+        </span>
+      }
+      caption={
+        unknown > 0 ? `${composition} · ${t('noData')}` : composition
+      }
+      value={`${entry.kcal} ${t('kcal')}`}
+      onClick={onOpen}
+      chevron
+    />
   );
 }

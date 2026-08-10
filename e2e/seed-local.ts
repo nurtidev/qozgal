@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { db } from '@/db';
 import {
@@ -129,6 +129,13 @@ async function main() {
   // выглядело бы как ошибка экрана
   const meat = product ? scaleToPortion(product, 220) : null;
 
+  // Записи за сегодня переписываются, а не добавляются: иначе каждый запуск
+  // удлиняет дневник, дуга дня набирает всё новые сегменты, и скриншоты
+  // перестают сравниваться между прогонами
+  await db
+    .delete(foodEntries)
+    .where(and(eq(foodEntries.userId, user.id), eq(foodEntries.consumedOn, today)));
+
   const [entry] = await db
     .insert(foodEntries)
     .values({
@@ -185,10 +192,76 @@ async function main() {
     },
   ]);
 
+  await seedConfirmedMeals(user.id, today);
+
   console.log(`Пользователь: ${user.firstName} (tg ${DEFAULT_USER.id})`);
   console.log(`Запись:       ${entry.id}`);
   console.log(`Экран:        http://localhost:3000/entry/${entry.id}`);
   process.exit(0);
+}
+
+/**
+ * Подтверждённые приёмы пищи за сегодня.
+ *
+ * Нужны ровно ради дуги дня: она разбита на сегменты по записям, и на
+ * пустом дне от неё видно только дорожку. Три записи разной величины —
+ * это и есть тот случай, ради которого дуга сделана сегментной: по форме
+ * видно, что день собран из плотного завтрака и двух мелких добавок.
+ */
+async function seedConfirmedMeals(userId: string, today: string) {
+  const meals = [
+    {
+      mealType: 'breakfast' as const,
+      items: [
+        { name: 'Овсяная каша на молоке', grams: 280, kcal: 296, p: 10.4, f: 8.1, c: 45.6 },
+        { name: 'Яйцо варёное', grams: 110, kcal: 171, p: 13.9, f: 11.7, c: 1.2 },
+      ],
+    },
+    {
+      mealType: 'snack' as const,
+      items: [
+        { name: 'Яблоко', grams: 180, kcal: 94, p: 0.5, f: 0.3, c: 24.8 },
+      ],
+    },
+    {
+      mealType: 'dinner' as const,
+      items: [
+        { name: 'Куриная грудка', grams: 190, kcal: 314, p: 58.9, f: 6.9, c: 0 },
+        { name: 'Рис отварной', grams: 210, kcal: 273, p: 5.7, f: 0.6, c: 59.9 },
+        { name: 'Салат из огурцов и помидоров', grams: 150, kcal: 62, p: 1.4, f: 3.2, c: 6.6 },
+      ],
+    },
+  ];
+
+  for (const meal of meals) {
+    const [entry] = await db
+      .insert(foodEntries)
+      .values({
+        userId,
+        consumedAt: new Date(),
+        consumedOn: today,
+        mealType: meal.mealType,
+        source: 'text',
+        status: 'confirmed',
+        rawInput: meal.items.map((i) => i.name.toLowerCase()).join(', '),
+      })
+      .returning();
+
+    await db.insert(foodItems).values(
+      meal.items.map((item, index) => ({
+        entryId: entry.id,
+        nameRaw: item.name,
+        grams: item.grams,
+        kcal: item.kcal,
+        proteinG: item.p,
+        fatG: item.f,
+        carbsG: item.c,
+        aiConfidence: 0.9,
+        aiEstimatedGrams: item.grams,
+        sortOrder: index,
+      })),
+    );
+  }
 }
 
 /** Дата N дней назад в формате ГГГГ-ММ-ДД */
