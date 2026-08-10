@@ -93,23 +93,24 @@ export function formatEntrySummary(input: EntrySummaryInput): string {
     (r) => r.nutrition && r.item.confidence < 0.5,
   );
   if (lowConfidence.length > 0) {
-    const reasons = lowConfidence
+    // Причина приходит кодом, а текст берётся из словаря на языке
+    // пользователя: раньше здесь печаталось пояснение модели, а оно
+    // всегда на языке промпта — то есть по-русски даже в казахском боте
+    const reason = lowConfidence
       .map((r) => r.item.uncertainty)
-      .filter((u) => u.trim().length > 0);
-    // Пояснение модели приходит на языке промпта, то есть по-русски.
-    // Своя фраза честнее показывает язык интерфейса, но конкретика модели
-    // полезнее общего предупреждения — поэтому она в приоритете.
+      .find((code) => code !== 'none');
+
     lines.push('');
     lines.push(
-      reasons.length > 0
-        ? `<i>⚠️ ${escapeHtml(reasons[0])}</i>`
-        : `<i>⚠️ ${t('bot.lowConfidence')}</i>`,
+      `<i>⚠️ ${
+        reason ? t(`bot.uncertainty.${reason}`) : t('bot.lowConfidence')
+      }</i>`,
     );
   }
 
-  if (recognition.notes.trim()) {
+  if (recognition.note !== 'none') {
     lines.push('');
-    lines.push(`<i>${escapeHtml(recognition.notes)}</i>`);
+    lines.push(`<i>${t(`bot.note.${recognition.note}`)}</i>`);
   }
 
   if (dayKcal != null && dayTargetKcal != null) {

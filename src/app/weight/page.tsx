@@ -359,6 +359,28 @@ function WeightChart({
         </g>
       )}
 
+      {/* Заливка под линией: она не несёт своих данных, но отделяет тренд
+          от точек взвешиваний — на графике из шестидесяти точек ломаная
+          иначе теряется среди них */}
+      <defs>
+        <linearGradient id="weight-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop
+            offset="0%"
+            stopColor="var(--tg-theme-button-color)"
+            stopOpacity="0.18"
+          />
+          <stop
+            offset="100%"
+            stopColor="var(--tg-theme-button-color)"
+            stopOpacity="0"
+          />
+        </linearGradient>
+      </defs>
+      <polygon
+        points={`${line} ${W - PAD},${H} ${PAD},${H}`}
+        fill="url(#weight-fill)"
+      />
+
       <polyline
         points={line}
         fill="none"
@@ -374,9 +396,25 @@ function WeightChart({
           cx={x(Date.parse(p.date))}
           cy={y(p.raw)}
           r="1.8"
-          fill="var(--tg-theme-hint-color)"
+          // Тем же цветом, что и линия: это одни и те же взвешивания,
+          // а серые точки читались как посторонний слой
+          fill="var(--tg-theme-button-color)"
+          opacity="0.45"
         />
       ))}
+
+      {/* Последнее взвешивание отмечено отдельно: на графике за квартал
+          глаз ищет прежде всего «где я сейчас» */}
+      {points.length > 0 && (
+        <circle
+          cx={x(Date.parse(points[points.length - 1].date))}
+          cy={y(points[points.length - 1].average)}
+          r="3.5"
+          fill="var(--tg-theme-button-color)"
+          stroke="var(--tg-theme-bg-color)"
+          strokeWidth="2"
+        />
+      )}
 
       <text
         x={PAD}

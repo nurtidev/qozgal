@@ -18,7 +18,7 @@ function item(over: Partial<ResolvedItem['item']> = {}): ResolvedItem['item'] {
     grams: 220,
     confidence: 0.85,
     preparation: 'fried',
-    uncertainty: '',
+    uncertainty: 'none',
     ...over,
   };
 }
@@ -41,7 +41,7 @@ const recognition: Recognition = {
   isFood: true,
   mealType: 'lunch',
   items: [],
-  notes: '',
+  note: 'none',
 };
 
 const total = { kcal: 510, proteinG: 33.4, fatG: 38.3, carbsG: 10.1 };
@@ -119,13 +119,51 @@ describe('Карточка разбора', () => {
     assert.match(text, /без 3 позиций/);
   });
 
-  test('низкая уверенность объясняется словами модели', () => {
+  test('причина сомнений приходит кодом, а текст — из словаря', () => {
+    // Раньше здесь печаталось пояснение модели, а она пишет на языке
+    // промпта: в казахском боте предупреждение оставалось русским
     const shaky: ResolvedItem = {
       ...withNutrition,
-      item: item({ confidence: 0.3, uncertainty: 'Не видно дна тарелки' }),
+      item: item({ confidence: 0.3, uncertainty: 'portion_size' }),
+    };
+    const ru = formatEntrySummary({ recognition, resolved: [shaky], total });
+    assert.match(ru, /⚠️ Не по чему определить размер порции/);
+
+    const kk = formatEntrySummary({
+      recognition,
+      resolved: [shaky],
+      total,
+      locale: 'kk',
+    });
+    assert.match(kk, /Порция мөлшерін анықтайтын нәрсе жоқ/);
+    assert.doesNotMatch(kk, /размер порции/);
+  });
+
+  test('без конкретной причины остаётся общее предупреждение', () => {
+    const shaky: ResolvedItem = {
+      ...withNutrition,
+      item: item({ confidence: 0.3, uncertainty: 'none' }),
     };
     const text = formatEntrySummary({ recognition, resolved: [shaky], total });
-    assert.match(text, /⚠️ Не видно дна тарелки/);
+    assert.match(text, /⚠️ Вес оценён приблизительно/);
+  });
+
+  test('замечание ко всему разбору тоже переводится', () => {
+    const shared = { ...recognition, note: 'shared_plate' as const };
+    const ru = formatEntrySummary({
+      recognition: shared,
+      resolved: [withNutrition],
+      total,
+    });
+    assert.match(ru, /рассчитанной на нескольких человек/);
+
+    const kk = formatEntrySummary({
+      recognition: shared,
+      resolved: [withNutrition],
+      total,
+      locale: 'kk',
+    });
+    assert.match(kk, /бірнеше адамға есептелген/);
   });
 
   test('блюдо, собранное по составу, помечено знаком приблизительности', () => {

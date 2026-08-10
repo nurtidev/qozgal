@@ -138,15 +138,17 @@ function buildStubScript(
   backEl.style.bottom = 'auto';
   backEl.style.left = '8px';
   backEl.style.right = 'auto';
-  backEl.style.width = 'auto';
-  backEl.style.minHeight = '32px';
-  backEl.style.padding = '0 10px';
-  backEl.style.fontSize = '14px';
-  backEl.style.borderRadius = '16px';
-  // Плашка под стрелкой: она рисуется поверх страницы, и без подложки
-  // на скриншоте читалась бы как часть содержимого экрана
+  backEl.style.width = '28px';
+  backEl.style.minHeight = '28px';
+  backEl.style.padding = '0';
+  backEl.style.fontSize = '16px';
+  backEl.style.borderRadius = '14px';
+  backEl.style.opacity = '0.85';
+  // Кружок со стрелкой, а не кнопка со словом: она рисуется поверх страницы
+  // и на скриншоте перекрывала заголовок экрана. Подложка нужна, чтобы
+  // стрелка не читалась как часть содержимого
   backEl.style.background = theme.secondary_bg_color || '#f4f4f5';
-  backEl.textContent = '‹ Назад';
+  backEl.textContent = '‹';
 
   function mount() {
     if (!document.body) return;
