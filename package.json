@@ -20,7 +20,10 @@
     "shot": "tsx e2e/shot.ts",
     "test:api": "tsx --test e2e/api.test.ts",
     "audit:foods": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-foods.ts",
-    "audit:weights": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-weights.ts"
+    "audit:weights": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-weights.ts",
+    "probe:usda": "node --env-file-if-exists=.env node_modules/.bin/tsx src/probe-usda.ts",
+    "audit:cache": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-cache.ts",
+    "audit:recipes": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-recipes.ts"
   },
   "overrides": {
     "valibot": "^1.4.2",
