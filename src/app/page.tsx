@@ -261,6 +261,12 @@ export default function DashboardPage() {
           />
           <Divider />
           <Row
+            title={t('stats')}
+            onClick={() => router.push('/stats')}
+            chevron
+          />
+          <Divider />
+          <Row
             title={t('measurements')}
             onClick={() => router.push('/measurements')}
             chevron
