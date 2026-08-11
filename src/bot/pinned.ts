@@ -2,7 +2,7 @@ import type { Api } from 'grammy';
 
 import { db } from '@/db';
 import { users, type User } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, isNotNull } from 'drizzle-orm';
 import {
   localDate,
   getDayTotals,
@@ -129,5 +129,30 @@ export async function tidyEntryMessages(
   for (const id of messageIds) {
     if (!id) continue;
     await api.deleteMessage(chatId, id).catch(() => {});
+  }
+}
+
+/**
+ * Перевод закреплённых сводок на новый день.
+ *
+ * Без этого панель врёт до первой записи: человек открывает бота утром
+ * и видит вчерашний итог с вчерашней датой — то есть ровно то, чего
+ * закреплённое сообщение должно было избежать.
+ *
+ * Идём по всем, у кого сводка закреплена, и сверяем её дату с локальной
+ * датой человека: часовые пояса разные, и «полночь» у каждого своя.
+ */
+export async function rollDailySummaries(api: Api): Promise<void> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(isNotNull(users.pinnedSummaryId));
+
+  for (const user of rows) {
+    if (user.isBlocked) continue;
+    if (user.pinnedSummaryOn === localDate(user.timezone)) continue;
+
+    // chat_id личного чата совпадает с идентификатором человека
+    await refreshDaySummary(api, user, Number(user.telegramId));
   }
 }

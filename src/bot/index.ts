@@ -1,5 +1,6 @@
 import { bot } from './bot';
 import { publishProfile } from './profile';
+import { rollDailySummaries } from './pinned';
 
 /**
  * Запуск бота отдельным процессом через long polling.
@@ -16,6 +17,20 @@ async function main() {
   // старте: держать публичное лицо бота руками в BotFather значит однажды
   // обнаружить, что казахского варианта там никогда и не было
   await publishProfile(bot.api);
+
+  /**
+   * Закреплённые сводки переводим на новый день сами.
+   *
+   * Проверка идёт чаще полуночи, потому что полночь у каждого своя —
+   * часовые пояса пользователей разные, а сверка дешёвая: один запрос
+   * к базе и сообщение только тем, у кого дата действительно сменилась.
+   */
+  const ROLL_INTERVAL_MS = 10 * 60 * 1000;
+  setInterval(() => {
+    rollDailySummaries(bot.api).catch((error) =>
+      console.error('Не удалось обновить закреплённые сводки:', error),
+    );
+  }, ROLL_INTERVAL_MS);
 
   console.log('Бот запущен, слушаю обновления…');
 

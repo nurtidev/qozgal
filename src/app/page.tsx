@@ -181,14 +181,7 @@ export default function DashboardPage() {
       {me.goal ? (
         <>
           <div className="fade-in flex justify-center py-1">
-            <DayArc
-              eaten={day.totals.kcal}
-              target={me.goal.kcalTarget}
-              segments={confirmed.map((entry) => ({
-                id: entry.id,
-                kcal: entry.kcal,
-              }))}
-            />
+            <DayArc eaten={day.totals.kcal} target={me.goal.kcalTarget} />
           </div>
 
           <Card className="flex flex-col gap-3.5">

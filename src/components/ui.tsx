@@ -428,42 +428,30 @@ export function MacroBar({
   );
 }
 
-export interface ArcSegment {
-  id: string;
-  kcal: number;
-}
-
 /**
  * Дуга дня.
  *
- * Кольцо разбито на приёмы пищи, а не залито одной сплошной полосой:
- * два обеда по тысяче и восемь перекусов по двести дают одинаковый итог
- * и совершенно разный день, и по форме дуги это видно раньше, чем
- * человек прочитает список записей.
+ * Показывает одно: сколько от дневной нормы уже съедено. Была попытка
+ * разбить её на сегменты по приёмам пищи — чтобы по форме читалась
+ * структура дня, — но на экране это выглядело браком отрисовки, а не
+ * замыслом: сначала из-за разной прозрачности соседних кусков, потом
+ * из-за скруглённых концов, которые наплывали друг на друга на стыках.
+ * Приём, который приходится объяснять, на приборной панели не работает,
+ * поэтому дуга сплошная. Структура дня видна в списке под ней.
  *
  * Перебор рисуется отдельной дугой поверх замкнутого кольца — так видно
  * не только то, что норма превышена, но и насколько.
  */
-export function DayArc({
-  eaten,
-  target,
-  segments,
-}: {
-  eaten: number;
-  target: number;
-  segments: ArcSegment[];
-}) {
+export function DayArc({ eaten, target }: { eaten: number; target: number }) {
   const t = useTranslations('ring');
 
   const size = 184;
   const stroke = 12;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  /** Зазор между сегментами в единицах длины дуги */
-  const gap = 7;
 
-  // Сегменты вырастают из нуля после первого кадра: иначе рост нечему
-  // анимировать, а статичная дуга не показывает, что она собрана из записей
+  // Дуга вырастает из нуля после первого кадра: иначе рост нечему
+  // анимировать, и число в центре выглядит просто надписью рядом с кольцом
   const [grown, setGrown] = useState(false);
   useEffect(() => {
     const timer = requestAnimationFrame(() => setGrown(true));
@@ -472,28 +460,8 @@ export function DayArc({
 
   const left = target - eaten;
   const over = left < 0;
+  const ratio = target > 0 ? Math.min(eaten / target, 1) : 0;
   const overRatio = target > 0 ? Math.min(-left / target, 1) : 0;
-
-  let offset = 0;
-  const drawn = segments
-    .filter((segment) => segment.kcal > 0)
-    .map((segment, index) => {
-      const share = target > 0 ? Math.min(segment.kcal / target, 1) : 0;
-      const start = offset;
-      offset = Math.min(offset + share, 1);
-      const length = Math.max((offset - start) * circumference - gap, 0);
-
-      return {
-        id: segment.id,
-        start,
-        length,
-        // Все сегменты одного тона: разная прозрачность соседних читалась
-        // не как «разные приёмы пищи», а как неоднородная заливка —
-        // на двух сегментах особенно, там перепад яркости выглядит
-        // случайным. Границу держит разрыв, и этого достаточно
-        opacity: 1,
-      };
-    });
 
   return (
     <div className="relative flex items-center justify-center">
@@ -507,22 +475,17 @@ export function DayArc({
           className="stroke-[var(--tg-theme-hint-color)] opacity-15"
         />
 
-        {drawn.map((segment) => (
-          <circle
-            key={segment.id}
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            stroke="var(--tg-theme-button-color)"
-            opacity={segment.opacity}
-            className="arc-seg"
-            strokeDasharray={`${grown ? segment.length : 0} ${circumference}`}
-            strokeDashoffset={-segment.start * circumference}
-          />
-        ))}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          stroke="var(--tg-theme-button-color)"
+          className="arc-seg"
+          strokeDasharray={`${grown ? ratio * circumference : 0} ${circumference}`}
+        />
 
         {over && (
           <circle
