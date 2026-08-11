@@ -2,7 +2,8 @@ import { or, ilike, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { products, type Product, type NewProduct } from '@/db/schema';
 import { env } from '@/env';
-import { searchUsda } from './usda';
+import { searchUsdaCandidates } from './usda';
+import { pickBestMatch } from './match';
 import { decomposeDish, type Ingredient } from '@/lib/ai/decompose';
 import type { RecognizedItem, Preparation } from '@/lib/ai/schemas';
 
@@ -32,9 +33,13 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
+/** Источники, где название — это описание USDA или Open Food Facts */
+const EXTERNAL_SOURCES = new Set(['usda', 'off']);
+
 async function findLocal(
   nameRu: string,
   nameEn: string,
+  preparation?: Preparation,
 ): Promise<Product | null> {
   const ru = normalize(nameRu);
   const en = normalize(nameEn);
@@ -64,7 +69,7 @@ async function findLocal(
 
   if (exact) return exact;
 
-  const [partial] = await db
+  const partial = await db
     .select()
     .from(products)
     .where(
@@ -82,9 +87,23 @@ async function findLocal(
       // предпочтительнее «рис с овощами и курицей в соусе терияки»
       sql`length(${products.nameRu})`,
     )
-    .limit(1);
+    .limit(10);
 
-  return partial ?? null;
+  if (partial.length === 0) return null;
+
+  /**
+   * Свои карточки берём по совпадению названия, кеш внешних справочников —
+   * только после той же проверки, что и свежая выдача USDA.
+   *
+   * Без этого починка отбора кандидатов работала бы вполсилы: `Rose-apples,
+   * raw` уже лежит в кеше, и запрос «apple» находил бы её по частичному
+   * совпадению `nameEn ilike '%apple%'` в обход всякой оценки. Одна
+   * неудачная карточка отвечала бы за яблоко всем пользователям и дальше.
+   */
+  const own = partial.find((p) => !EXTERNAL_SOURCES.has(p.source));
+  if (own) return own;
+
+  return pickBestMatch({ nameEn, preparation }, partial);
 }
 
 async function cacheProduct(candidate: NewProduct): Promise<Product | null> {
@@ -110,18 +129,32 @@ async function resolveDirect(
   nameEn: string,
   preparation?: Preparation,
 ): Promise<Product | null> {
-  const local = await findLocal(nameRu, nameEn);
+  const local = await findLocal(nameRu, nameEn, preparation);
   if (local) return local;
 
-  // Способ приготовления входит в запрос: «boiled potato» и «fried potato» —
-  // разные строки в USDA с разной калорийностью.
-  const query =
-    preparation && preparation !== 'unknown'
-      ? `${nameEn} ${preparation}`
-      : nameEn;
+  /**
+   * Кандидатов берём с запасом и выбираем сами.
+   *
+   * Раньше здесь стоял limit 1 и первый результат уходил в кеш как есть —
+   * на «apple» так закрепилась карточка `Rose-apples, raw` с 25 ккал/100 г
+   * вместо 52. Порядок выдачи USDA считает релевантностью строковое
+   * совпадение и о том, что мы ищем еду, не знает: на тот же запрос она
+   * ставила выше `Croissants, apple` (254 ккал) и `Pie, apple` (296).
+   */
+  const input = { nameEn, preparation };
+  const candidates = await searchUsdaCandidates(input, env.USDA_API_KEY);
+  const candidate = pickBestMatch(input, candidates);
 
-  const [candidate] = await searchUsda(query, env.USDA_API_KEY, { limit: 1 });
-  if (!candidate) return null;
+  if (!candidate) {
+    // Пустая выдача и отбракованная — разные события: во втором случае
+    // в USDA что-то есть, но не то, и это материал для настройки весов.
+    if (candidates.length > 0) {
+      console.warn(
+        `USDA: ни один из ${candidates.length} кандидатов не подошёл под "${nameEn}"`,
+      );
+    }
+    return null;
+  }
 
   return cacheProduct(candidate);
 }

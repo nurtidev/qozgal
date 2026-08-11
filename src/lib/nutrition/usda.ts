@@ -178,6 +178,71 @@ export async function searchUsda(
   return [];
 }
 
+/**
+ * Собирает кандидатов под одну позицию: отдельно по названию и отдельно
+ * по названию со способом приготовления.
+ *
+ * Два запроса, а не один, из-за того, как USDA понимает релевантность.
+ * На «rice boiled» она отдала десять строк, где не было риса вовсе:
+ * `Chicken, feet, boiled`, `Asparagus, cooked, boiled`, `Beets, cooked,
+ * boiled` — слово «boiled» встречается в номенклатуре тысячи раз и
+ * перетягивает выдачу на себя. Голый «rice» отдаёт рис.
+ *
+ * Способ приготовления при этом нужен: без него в выдаче по «potato»
+ * не окажется жареной картошки. Поэтому оба списка складываются, а
+ * выбирает из них `pickBestMatch`, для которого приготовление — критерий
+ * оценки, а не поиска.
+ *
+ * Запросы бесплатны и кешируются на сутки, так что второй ничего не стоит.
+ */
+export async function searchUsdaCandidates(
+  input: { nameEn: string; preparation?: string },
+  apiKey: string | undefined,
+  options: UsdaSearchOptions = {},
+): Promise<NewProduct[]> {
+  /**
+   * Пятьдесят, а не десять: в первой десятке по «rice» стоят `Rice
+   * crackers` и шесть строк `Snacks, rice cakes` — рисовые хлебцы
+   * релевантнее риса по мнению поиска. Сам рис нашёлся глубже.
+   */
+  const { limit = 50, signal } = options;
+  const queries = [input.nameEn];
+
+  if (input.preparation && input.preparation !== 'unknown') {
+    queries.push(`${input.nameEn} ${input.preparation}`);
+
+    /**
+     * Третий запрос — с общим словом «cooked» вместо конкретного способа.
+     *
+     * У поиска USDA свои представления о синонимах: «rice boiled» не
+     * находит варёный рис вообще, «rice» находит только дикий (101 ккал),
+     * а «rice cooked» отдаёт `Rice, cooked, NFS` — те самые 129 ккал,
+     * которые и нужны. Слово «boiled» стоит у морепродуктов и овощей,
+     * а рис в номенклатуре просто «cooked».
+     */
+    if (input.preparation !== 'raw') {
+      queries.push(`${input.nameEn} cooked`);
+    }
+  }
+
+  const results = await Promise.all(
+    queries.map((query) => searchUsda(query, apiKey, { limit, signal })),
+  );
+
+  // Одна и та же карточка приходит по обоим запросам — держим первую
+  const seen = new Set<string>();
+  const candidates: NewProduct[] = [];
+
+  for (const product of results.flat()) {
+    const key = product.externalId ?? product.nameEn ?? product.nameRu;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(product);
+  }
+
+  return candidates;
+}
+
 /* ────────────────────── Open Food Facts (штрихкоды) ────────────────── */
 
 interface OffProduct {
