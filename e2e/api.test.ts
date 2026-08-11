@@ -453,9 +453,12 @@ describe('Травмы и ограничения', () => {
 
 describe('Программа тренировок', () => {
   interface PlannedExercise {
+    id: string;
     exerciseId: string;
     name: string;
     sets: number;
+    repMin: number | null;
+    durationMin: number | null;
     doneSets?: number;
   }
   interface Program {
@@ -593,6 +596,81 @@ describe('Программа тренировок', () => {
       body: JSON.stringify({ daysPerWeek: 3, place: 'улица' }),
     });
     assert.equal(nowhere.status, 422);
+  });
+
+  test('упражнение можно заменить, не пересобирая программу', async () => {
+    await call('/api/program', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ daysPerWeek: 3, place: 'gym' }),
+    });
+
+    const before = await program();
+    // Кардио заменять нечем, поэтому берём силовой слот
+    const slot = before.days[0].exercises.find((e) => e.durationMin === null);
+    assert.ok(slot, 'в первом дне должно быть силовое упражнение');
+
+    const swapped = await call(`/api/program/exercises/${slot.id}`, ALICE, {
+      method: 'POST',
+    });
+    assert.equal(swapped.status, 200);
+    const replaced = swapped.body.exercise as PlannedExercise;
+    assert.notEqual(replaced.exerciseId, slot.exerciseId);
+
+    const after = await program();
+    const same = after.days[0].exercises.find((e) => e.id === slot.id);
+    assert.ok(same);
+    assert.notEqual(same.name, slot.name, 'движение должно смениться');
+    assert.equal(same.sets, slot.sets, 'доза зависит от паттерна и не меняется');
+    assert.equal(same.repMin, slot.repMin);
+
+    // Остальные дни трогать незачем: человек заменил одно движение,
+    // а не попросил другую программу
+    assert.deepEqual(
+      after.days.slice(1).flatMap((d) => d.exercises.map((e) => e.name)),
+      before.days.slice(1).flatMap((d) => d.exercises.map((e) => e.name)),
+    );
+
+    // И в дне не появилось дубля: одно движение дважды — не программа
+    const ids = after.days[0].exercises.map((e) => e.exerciseId);
+    assert.equal(new Set(ids).size, ids.length);
+  });
+
+  test('повторная замена перебирает варианты, а не мечется между двумя', async () => {
+    const plan = await program();
+    const slot = plan.days[0].exercises.find((e) => e.durationMin === null);
+    assert.ok(slot);
+
+    const seen = [slot.exerciseId];
+    for (let i = 0; i < 2; i += 1) {
+      const { status, body } = await call(`/api/program/exercises/${slot.id}`, ALICE, {
+        method: 'POST',
+      });
+      assert.equal(status, 200);
+      seen.push((body.exercise as PlannedExercise).exerciseId);
+    }
+
+    // Три подряд не должны совпасть: иначе кнопка возвращала бы то же самое
+    assert.notEqual(seen[1], seen[0]);
+    assert.notEqual(seen[2], seen[1]);
+  });
+
+  test('чужое упражнение заменить нельзя', async () => {
+    const plan = await program();
+    const slot = plan.days[0].exercises.find((e) => e.durationMin === null);
+    assert.ok(slot);
+
+    // Идентификатор приходит из URL: подставленный чужой не должен работать
+    const other = await call(`/api/program/exercises/${slot.id}`, BOB, {
+      method: 'POST',
+    });
+    assert.equal(other.status, 404);
+
+    const missing = await call(
+      '/api/program/exercises/00000000-0000-0000-0000-000000000000',
+      ALICE,
+      { method: 'POST' },
+    );
+    assert.equal(missing.status, 404);
   });
 
   test('от программы можно отказаться', async () => {

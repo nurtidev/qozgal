@@ -94,6 +94,8 @@ export default function ProgramPage() {
   const [days, setDays] = useState('3');
   const [place, setPlace] = useState<Place>('gym');
   const [busy, setBusy] = useState(false);
+  /** id заменяемого упражнения — блокируем только его строку, а не экран */
+  const [swapping, setSwapping] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,6 +157,27 @@ export default function ProgramPage() {
       haptic('error');
       setError(e instanceof ApiError ? e.message : t('startFailed'));
       setBusy(false);
+    }
+  }
+
+  /**
+   * Замена упражнения.
+   *
+   * Обновляется вся программа, а не одна строка: замена может задеть выбор
+   * в других днях — подбор избегает движений, уже занятых рядом.
+   */
+  async function swap(planExerciseId: string) {
+    setSwapping(planExerciseId);
+    setError(null);
+    try {
+      await api(`/api/program/exercises/${planExerciseId}`, { method: 'POST' });
+      haptic('success');
+      await load();
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof ApiError ? e.message : t('swapFailed'));
+    } finally {
+      setSwapping(null);
     }
   }
 
@@ -321,22 +344,43 @@ export default function ProgramPage() {
                     <li key={exercise.id} className="flex flex-col">
                       <span className="flex items-baseline justify-between gap-3">
                         <span className="t-body">{exercise.name}</span>
-                        {/* Доза и отдых одной строкой: отдельная строка
-                            «отдых 120 с» повторялась под каждым упражнением
-                            и превращала список в частокол одинаковых слов */}
-                        <span className="t-caption tabular shrink-0">
-                          {exercise.durationMin
-                            ? t('doseMin', { min: exercise.durationMin })
-                            : t('dose', {
-                                sets: exercise.sets,
-                                repMin: exercise.repMin ?? 0,
-                                repMax: exercise.repMax ?? 0,
-                              })}
-                          {exercise.restSec
-                            ? ` · ${t('rest', { sec: exercise.restSec })}`
-                            : ''}
+
+                        <span className="flex shrink-0 items-baseline gap-1">
+                          {/* Доза и отдых одной строкой: отдельная строка
+                              «отдых 120 с» повторялась под каждым упражнением
+                              и превращала список в частокол одинаковых слов */}
+                          <span className="t-caption tabular">
+                            {exercise.durationMin
+                              ? t('doseMin', { min: exercise.durationMin })
+                              : t('dose', {
+                                  sets: exercise.sets,
+                                  repMin: exercise.repMin ?? 0,
+                                  repMax: exercise.repMax ?? 0,
+                                })}
+                            {exercise.restSec
+                              ? ` · ${t('rest', { sec: exercise.restSec })}`
+                              : ''}
+                          </span>
+
+                          {/* Значком, а не словом: «Заменить» под каждой
+                              строкой давало семь одинаковых слов в столбик
+                              на день — тот же частокол, от которого избавлена
+                              строка отдыха. Кардио пропущено: слот один,
+                              а минуты не зависят от снаряда */}
+                          {!exercise.durationMin && (
+                            <button
+                              type="button"
+                              disabled={busy || swapping !== null}
+                              onClick={() => swap(exercise.id)}
+                              aria-label={t('swap')}
+                              className="-my-1 -mr-1 flex h-7 w-7 items-center justify-center rounded-lg text-[var(--tg-theme-link-color)] active:opacity-60 disabled:opacity-30"
+                            >
+                              <SwapIcon busy={swapping === exercise.id} />
+                            </button>
+                          )}
                         </span>
                       </span>
+
                       {exercise.conflicts.length > 0 && (
                         <span
                           className={`text-[12px] leading-4 ${
@@ -372,6 +416,10 @@ export default function ProgramPage() {
           </Card>
         ))}
       </section>
+
+      {/* Один раз под всей программой, а не под каждым упражнением: смысл
+          кнопки одинаков во всех днях */}
+      <Hint>{t('swapHint')}</Hint>
 
       {/* Пропущенные слоты — то, чего в программе нет. Молчание тут выглядело
           бы как полная программа, а это неправда */}
@@ -417,5 +465,32 @@ export default function ProgramPage() {
         </Button>
       </div>
     </Screen>
+  );
+}
+
+/**
+ * Круговая стрелка — значок замены.
+ *
+ * Рисуется здесь, а не берётся из шрифта: подходящих символов в IBM Plex
+ * Sans нет, а подмена на запасной шрифт посреди строки видна.
+ */
+function SwapIcon({ busy }: { busy: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      aria-hidden="true"
+      className={busy ? 'animate-spin' : undefined}
+    >
+      <path d="M13.2 6.5A5.4 5.4 0 0 0 3.4 5.2" />
+      <path d="M2.8 9.5a5.4 5.4 0 0 0 9.8 1.3" />
+      <path d="M3.1 2.2v3h3" />
+      <path d="M12.9 13.8v-3h-3" />
+    </svg>
   );
 }

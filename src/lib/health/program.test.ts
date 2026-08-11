@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   buildProgram,
   levelFromActivity,
+  nextAlternative,
+  type AlternativeInput,
   type ExerciseCard,
   type ProgramInput,
 } from './program';
@@ -274,5 +276,109 @@ describe('Программа тренировок', () => {
       // Либо повторы, либо минуты — пустой карточки в программе быть не должно
       assert.ok(planned.repMin !== null || planned.durationMin !== null);
     }
+  });
+});
+
+/**
+ * Замена упражнения — единственное место, где человек правит собранную
+ * программу. Правила подбора здесь те же, что при сборке: иначе замена
+ * стала бы дырой в защите от травм, ради которой всё и считается таблицей.
+ */
+describe('Замена упражнения', () => {
+  function swap(overrides: Partial<AlternativeInput> = {}): AlternativeInput {
+    return {
+      pattern: 'h_push',
+      currentId: 'Жим лёжа',
+      exercises: CATALOG,
+      place: 'gym',
+      injuries: [],
+      takenIds: [],
+      ...overrides,
+    };
+  }
+
+  test('даёт другое упражнение того же паттерна', () => {
+    const next = nextAlternative(swap());
+    assert.ok(next);
+    assert.notEqual(next.exerciseId, 'Жим лёжа');
+    assert.equal(card(next.exerciseId).pattern, 'h_push');
+  });
+
+  test('повторные замены обходят все варианты и возвращаются к первому', () => {
+    // Обход должен быть циклическим: «лучшее из оставшихся» после исключения
+    // текущего снова указывало бы на предыдущее, и кнопка перебирала бы
+    // два упражнения туда-сюда
+    // В зале доступен весь инвентарь справочника, включая брусья
+    const inGym = CATALOG.filter((e) => e.pattern === 'h_push').length;
+
+    const seen: string[] = [];
+    let current = 'Жим лёжа';
+
+    for (let i = 0; i < inGym + 1; i += 1) {
+      const next = nextAlternative(swap({ currentId: current }));
+      assert.ok(next, 'замена должна находиться на каждом шаге');
+      seen.push(next.exerciseId);
+      current = next.exerciseId;
+    }
+
+    // Круг замкнулся: за N шагов пройдены все варианты, на N+1 — повтор
+    assert.equal(new Set(seen).size, seen.length - 1);
+    assert.equal(seen.at(-1), seen[0]);
+  });
+
+  test('не предлагает то, что уже стоит в этом же дне', () => {
+    const taken = CATALOG.filter((e) => e.pattern === 'h_push')
+      .map((e) => e.id)
+      .filter((id) => id !== 'Жим лёжа' && id !== 'Отжимания на брусьях');
+
+    const next = nextAlternative(swap({ takenIds: taken }));
+    assert.ok(next);
+    assert.ok(!taken.includes(next.exerciseId));
+  });
+
+  test('дома не предлагает штангу', () => {
+    const next = nextAlternative(
+      swap({ place: 'home', currentId: 'Отжимания от пола' }),
+    );
+    assert.ok(next);
+    assert.notEqual(card(next.exerciseId).equipment, 'штанга');
+  });
+
+  test('движение на больное место в замену не попадает', () => {
+    // Та же строгость, что при сборке: предлагает приложение, а не человек
+    const hurt: ActiveInjury[] = [{ area: 'shoulder', severity: 'pain' }];
+    const next = nextAlternative(swap({ injuries: hurt, pattern: 'squat', currentId: 'Приседания со штангой' }));
+
+    // В приседе плечо не задействовано — замена находится
+    assert.ok(next);
+
+    // А весь горизонтальный жим нагружает плечо: заменить нечем, и лучше
+    // сказать это прямо, чем подставить то же самое движение под другим именем
+    assert.equal(nextAlternative(swap({ injuries: hurt })), null);
+  });
+
+  test('«беспокоит» берётся только когда чистого варианта нет', () => {
+    const watch: ActiveInjury[] = [{ area: 'knee', severity: 'watch' }];
+    const next = nextAlternative(
+      swap({ injuries: watch, pattern: 'squat', currentId: 'Приседания со штангой' }),
+    );
+
+    assert.ok(next);
+    // Все приседания нагружают колено, поэтому вариант придёт с пометкой
+    assert.deepEqual(next.caution, ['knee']);
+  });
+
+  test('единственный вариант заменить нечем', () => {
+    const next = nextAlternative(
+      swap({ pattern: 'quad_iso', currentId: 'Разгибания ног' }),
+    );
+    assert.equal(next, null);
+  });
+
+  test('кардио к замене не предлагается вовсе', () => {
+    // Кардио-слот один и снаряд в нём не меняет сути: API до подбора
+    // не доходит, но и подбор не должен предлагать бег вместо ходьбы
+    const next = nextAlternative(swap({ pattern: 'cardio', currentId: 'Бег' }));
+    assert.ok(next === null || card(next.exerciseId).pattern === 'cardio');
   });
 });

@@ -299,6 +299,51 @@ export function buildProgram(input: ProgramInput): Program {
   return { daysPerWeek, days, skipped };
 }
 
+interface Ranked {
+  card: ExerciseCard;
+  caution: BodyArea[];
+}
+
+/**
+ * Отсев по травмам — общий для сборки программы и для замены упражнения.
+ *
+ * Строгость здесь выше, чем при ручном выборе упражнения человеком, и это
+ * осознанно: «болит» и «врач запретил» исключают движение совсем, «беспокоит»
+ * берётся только когда чистой замены в этом паттерне нет. При ручном выборе
+ * решает человек, а здесь предлагает приложение — предложить движение
+ * на больное место оно не вправе.
+ */
+function allowedByInjuries(
+  cards: ExerciseCard[],
+  injuries: ActiveInjury[],
+): { pool: Ranked[]; blockedAreas: BodyArea[] } {
+  const clean: Ranked[] = [];
+  const cautious: Ranked[] = [];
+  const blocked = new Set<BodyArea>();
+
+  for (const card of cards) {
+    const conflicts = conflictsFor(card.loadsAreas, injuries);
+    const worst = worstSeverity(conflicts);
+
+    if (worst === 'pain' || worst === 'medical') {
+      for (const c of conflicts) blocked.add(c.area);
+      continue;
+    }
+
+    if (worst === 'watch') {
+      cautious.push({ card, caution: conflicts.map((c) => c.area) });
+      continue;
+    }
+
+    clean.push({ card, caution: [] });
+  }
+
+  return {
+    pool: clean.length > 0 ? clean : cautious,
+    blockedAreas: [...blocked],
+  };
+}
+
 /**
  * Подбор упражнения под слот.
  *
@@ -330,38 +375,10 @@ function pick(
     return knownAtPlace ? null : { pattern, reason: 'equipment', areas: [] };
   }
 
-  interface Ranked {
-    card: ExerciseCard;
-    caution: BodyArea[];
-  }
-
-  const clean: Ranked[] = [];
-  const cautious: Ranked[] = [];
-  const blockedAreas = new Set<BodyArea>();
-
-  for (const card of available) {
-    const conflicts = conflictsFor(card.loadsAreas, input.injuries);
-    const worst = worstSeverity(conflicts);
-
-    if (worst === 'pain' || worst === 'medical') {
-      for (const c of conflicts) blockedAreas.add(c.area);
-      continue;
-    }
-
-    if (worst === 'watch') {
-      cautious.push({ card, caution: conflicts.map((c) => c.area) });
-      continue;
-    }
-
-    clean.push({ card, caution: [] });
-  }
-
-  // «Беспокоит» — не запрет, но и не первый выбор: берём только когда
-  // чистой замены в этом паттерне нет
-  const pool = clean.length > 0 ? clean : cautious;
+  const { pool, blockedAreas } = allowedByInjuries(available, input.injuries);
 
   if (pool.length === 0) {
-    return { pattern, reason: 'injury', areas: [...blockedAreas] };
+    return { pattern, reason: 'injury', areas: blockedAreas };
   }
 
   const best = pool
@@ -384,6 +401,94 @@ function pick(
     pattern,
     caution: best.caution,
     ...prescribe(pattern, input.goal, input.level),
+  };
+}
+
+/* ─────────────────────── Замена одного упражнения ──────────────────── */
+
+export interface AlternativeInput {
+  pattern: MovementPattern;
+  /** Что стоит в слоте сейчас — от него отсчитывается «следующее» */
+  currentId: string;
+  exercises: ExerciseCard[];
+  place: Place;
+  injuries: ActiveInjury[];
+  /** Что уже стоит в этом же дне: одно движение дважды — не программа */
+  takenIds: string[];
+}
+
+export interface Alternative {
+  exerciseId: string;
+  nameRu: string;
+  /** Области, которые движение задевает на уровне «беспокоит» */
+  caution: BodyArea[];
+}
+
+/**
+ * Следующее упражнение того же паттерна.
+ *
+ * Зачем нужно: тренажёр занят, движение незнакомо, плечо хрустит именно
+ * на этом жиме. Без замены у человека остаётся выбор между «пересобрать
+ * всю программу» и «уйти в свободную тренировку», то есть между потерей
+ * привычной программы и отказом от неё, — и он уходит молча.
+ *
+ * Обход циклический: каждое нажатие даёт следующий вариант по тому же
+ * порядку предпочтения, каким собиралась программа, а после последнего
+ * возвращает к первому. Иначе кнопка перебирала бы два варианта туда-сюда:
+ * «лучшее из оставшихся» после исключения текущего снова указывает
+ * на предыдущее.
+ *
+ * Паттерн не меняется, поэтому подходы, повторы и отдых остаются те же —
+ * заменяется движение, а не место дня в программе.
+ *
+ * @returns следующий вариант или null, если выбора нет
+ */
+export function nextAlternative(input: AlternativeInput): Alternative | null {
+  const allowed = EQUIPMENT_BY_PLACE[input.place];
+
+  const available = input.exercises.filter(
+    (e) =>
+      e.pattern === input.pattern &&
+      e.equipment !== null &&
+      allowed.includes(e.equipment) &&
+      // Текущее оставляем в списке: по нему находится место в кругу
+      (e.id === input.currentId || !input.takenIds.includes(e.id)),
+  );
+
+  const { pool } = allowedByInjuries(available, input.injuries);
+  if (pool.length === 0) return null;
+
+  const ordered = pool
+    .map((ranked, order) => ({
+      ranked,
+      key: [equipmentRank(ranked.card.equipment, allowed), order] as const,
+    }))
+    .sort((a, b) => compareKeys(a.key, b.key))
+    .map((entry) => entry.ranked);
+
+  const at = ordered.findIndex((r) => r.card.id === input.currentId);
+
+  /**
+   * Текущего в списке может не быть: например, оно шло с пометкой
+   * «беспокоит», а потом в этом же паттерне появилось чистое движение —
+   * тогда пул состоит из чистых, и заменять надо на первое из них.
+   */
+  if (at === -1) {
+    const first = ordered[0];
+    return {
+      exerciseId: first.card.id,
+      nameRu: first.card.nameRu,
+      caution: first.caution,
+    };
+  }
+
+  if (ordered.length < 2) return null;
+
+  const next = ordered[(at + 1) % ordered.length];
+  return {
+    exerciseId: next.card.id,
+    nameRu: next.card.nameRu,
+    caution: next.caution,
   };
 }
 
