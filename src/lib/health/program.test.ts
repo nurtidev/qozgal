@@ -369,10 +369,42 @@ describe('Замена упражнения', () => {
   });
 
   test('единственный вариант заменить нечем', () => {
+    // Каталог урезан намеренно: привязка к паттерну, у которого сегодня одно
+    // упражнение, ломала бы тест при каждом пополнении справочника — и
+    // однажды сломалась, когда домашних вариантов стало больше
+    const alone = CATALOG.filter((e) => e.id === 'Разгибания ног');
     const next = nextAlternative(
-      swap({ pattern: 'quad_iso', currentId: 'Разгибания ног' }),
+      swap({ pattern: 'quad_iso', currentId: 'Разгибания ног', exercises: alone }),
     );
     assert.equal(next, null);
+  });
+
+  test('замена есть в каждом паттерне и в зале, и дома', () => {
+    // Защита от регресса: пока в паттерне один вариант, кнопка замены
+    // у этого упражнения ничего не делает. Так было в десяти паттернах
+    // из шестнадцати дома, и заметно это стало только замером
+    const patterns = [...new Set(CATALOG.map((e) => e.pattern).filter(Boolean))];
+
+    for (const place of ['gym', 'home'] as const) {
+      for (const pattern of patterns) {
+        if (pattern === 'cardio') continue;
+
+        const current = CATALOG.find((e) => e.pattern === pattern);
+        assert.ok(current);
+
+        const next = nextAlternative(
+          swap({
+            pattern: pattern as AlternativeInput['pattern'],
+            currentId: current.id,
+            place,
+          }),
+        );
+        assert.ok(
+          next,
+          `${pattern} в режиме «${place}» нечем заменить — нужен ещё вариант в справочнике`,
+        );
+      }
+    }
   });
 
   test('кардио к замене не предлагается вовсе', () => {

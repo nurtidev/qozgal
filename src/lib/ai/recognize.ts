@@ -244,19 +244,39 @@ export async function recognizeFood(
  * здесь, чтобы дальше по коду эти значения можно было считать корректными.
  */
 function sanitize(recognition: Recognition): Recognition {
-  return {
-    ...recognition,
-    items: recognition.items
-      .map((item) => ({
-        ...item,
-        grams: clamp(Math.round(item.grams), 1, 5000),
-        confidence: clamp(item.confidence, 0, 1),
-        nameRu: item.nameRu.trim(),
-        nameEn: item.nameEn.trim(),
-      }))
-      .filter((item) => item.nameRu.length > 0),
-  };
+  const items = recognition.items
+    .map((item) => ({
+      ...item,
+      grams: clamp(Math.round(item.grams), 1, 5000),
+      confidence: clamp(item.confidence, 0, 1),
+      nameRu: item.nameRu.trim(),
+      nameEn: item.nameEn.trim(),
+    }))
+    .filter((item) => item.nameRu.length > 0);
+
+  if (items.length > MAX_ITEMS) {
+    console.warn(
+      `Разбор вернул ${items.length} позиций — оставляем ${MAX_ITEMS}`,
+    );
+  }
+
+  return { ...recognition, items: items.slice(0, MAX_ITEMS) };
 }
+
+/**
+ * Сколько позиций может быть в одном разборе.
+ *
+ * Потолок не про экран, а про то, что стоит за каждой позицией: поиск
+ * нутриентов — до трёх запросов к USDA, а не нашлось целиком — ещё
+ * разложение на ингредиенты отдельным вызовом модели. Вырожденный ответ,
+ * где накрытый стол разобран на сорок позиций, обошёлся бы в сотню
+ * запросов и часть часовой квоты — на одну фотографию.
+ *
+ * Двадцать с запасом: на снимке дастархана бывает десяток блюд, но не
+ * четыре десятка, а лишние в таком разборе — это обычно разложенный
+ * на составляющие один салат.
+ */
+const MAX_ITEMS = 20;
 
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;

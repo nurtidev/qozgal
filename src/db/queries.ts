@@ -1,4 +1,4 @@
-import { and, eq, sql, desc } from 'drizzle-orm';
+import { and, eq, sql, desc, inArray } from 'drizzle-orm';
 import { db } from './index';
 import {
   users,
@@ -325,4 +325,40 @@ export async function getActiveGoal(userId: string) {
     .limit(1);
 
   return goal ?? null;
+}
+
+/* ────────────────────────── Ограничение разборов ───────────────────── */
+
+/**
+ * Сколько разборов человек запросил за последние сутки и за последний час.
+ *
+ * Считаются только записи, для которых вызывалась модель: повтор блюда
+ * и ручной ввод ничего не стоят и в лимит не идут.
+ *
+ * Отдельной таблицы под счётчик нет намеренно: записи и так лежат в базе
+ * с временем создания, а счётчик в памяти бота обнулялся бы при каждом
+ * перезапуске контейнера — то есть при каждом деплое.
+ */
+export async function recognitionsUsed(
+  userId: string,
+): Promise<{ hour: number; day: number }> {
+  const [row] = await db
+    .select({
+      hour: sql<number>`count(*) filter (
+        where ${foodEntries.createdAt} > now() - interval '1 hour'
+      )`,
+      day: sql<number>`count(*) filter (
+        where ${foodEntries.createdAt} > now() - interval '1 day'
+      )`,
+    })
+    .from(foodEntries)
+    .where(
+      and(
+        eq(foodEntries.userId, userId),
+        inArray(foodEntries.source, ['photo', 'text']),
+        sql`${foodEntries.createdAt} > now() - interval '1 day'`,
+      ),
+    );
+
+  return { hour: Number(row?.hour ?? 0), day: Number(row?.day ?? 0) };
 }

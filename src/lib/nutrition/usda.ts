@@ -48,6 +48,34 @@ interface UsdaSearchResponse {
   foods?: UsdaFood[];
 }
 
+/**
+ * Остаток часовой квоты USDA — из заголовков ответа.
+ *
+ * Шлюз api.data.gov отдаёт `X-RateLimit-Remaining` на каждый запрос, и это
+ * единственный способ узнать о приближении к потолку заранее. Знать нужно
+ * вот почему: при исчерпании квоты запросы начинают отбиваться, клиент
+ * возвращает пустоту, и позиция молча остаётся без нутриентов — то есть
+ * ровно тот случай, ради которого построено всё приложение, но без единой
+ * ошибки в логах.
+ *
+ * Одна позиция стоит трёх запросов (название, способ приготовления, общее
+ * «cooked»), так что тысяча в час — это порядка трёхсот разборов, если ни
+ * один продукт не нашёлся в своём справочнике.
+ */
+function warnIfQuotaLow(response: Response): void {
+  const remaining = Number(response.headers.get('x-ratelimit-remaining'));
+  if (!Number.isFinite(remaining)) return;
+
+  if (remaining <= QUOTA_ALARM) {
+    console.warn(
+      `USDA: часовая квота почти исчерпана — осталось ${remaining} запросов`,
+    );
+  }
+}
+
+/** Порог, ниже которого об остатке квоты стоит сказать в лог */
+const QUOTA_ALARM = 100;
+
 function nutrientValue(food: UsdaFood, id: number): number | null {
   const found = food.foodNutrients.find((n) => n.nutrientId === id);
   return found?.value ?? null;
@@ -148,6 +176,7 @@ export async function searchUsda(
             `USDA: "${query}" получен без набора Survey (FNDDS) с попытки ${attempt + 1}`,
           );
         }
+        warnIfQuotaLow(response);
         const data = (await response.json()) as UsdaSearchResponse;
         return (data.foods ?? [])
           .map(toProduct)

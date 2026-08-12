@@ -444,4 +444,185 @@ export const EXERCISES: NewExercise[] = [
     pattern: 'cardio',
     loadsAreas: ['ankle', 'knee', 'lower_back'],
   },
+  /* ──────────────── Домашние варианты и замены ────────────────── */
+
+  /**
+   * Эти карточки добавлены не для полноты справочника, а потому что без
+   * них половина приложения не работала.
+   *
+   * Замер: в программе на четыре дня дома выпадал слот изоляции квадрицепса
+   * (разгибания есть только на тренажёре), а замена упражнения не работала
+   * в десяти паттернах из шестнадцати — там был единственный вариант, и
+   * кнопка ничего не меняла. В зале то же в трёх паттернах: выпад, изоляция
+   * квадрицепса и грудь.
+   *
+   * Поэтому здесь ровно то, что закрывает пробел: движения с собственным
+   * весом, гантелями и турником, по одному-двум на паттерн. Это не отмена
+   * правила «набор небольшой» — вариаций одного жима по-прежнему не будет.
+   */
+
+  {
+    nameRu: 'Приседания с собственным весом',
+    nameKk: 'Дене салмағымен отырып тұру',
+    muscleGroup: 'legs',
+    equipment: 'без инвентаря',
+    metValue: 3.8,
+    pattern: 'squat',
+    loadsAreas: ['knee', 'hip'],
+  },
+  {
+    nameRu: 'Болгарские приседания',
+    nameKk: 'Болгар отырып тұруы',
+    muscleGroup: 'legs',
+    equipment: 'гантели',
+    metValue: 5,
+    pattern: 'squat',
+    loadsAreas: ['knee', 'hip', 'ankle'],
+  },
+  {
+    nameRu: 'Выпады без инвентаря',
+    nameKk: 'Құралсыз алға адымдау',
+    muscleGroup: 'legs',
+    equipment: 'без инвентаря',
+    metValue: 3.8,
+    pattern: 'lunge',
+    loadsAreas: ['knee', 'hip', 'ankle'],
+  },
+  {
+    nameRu: 'Обратные выпады с гантелями',
+    nameKk: 'Гантельмен артқа адымдау',
+    muscleGroup: 'legs',
+    equipment: 'гантели',
+    metValue: 5,
+    pattern: 'lunge',
+    // Колену в обратном выпаде достаётся меньше, чем в переднем, но
+    // разметка идёт с запасом: пропустить опасное хуже, чем предупредить
+    loadsAreas: ['knee', 'hip', 'ankle'],
+  },
+  {
+    nameRu: 'Румынская тяга на одной ноге',
+    nameKk: 'Бір аяқпен румын тартуы',
+    muscleGroup: 'legs',
+    equipment: 'гантели',
+    metValue: 5,
+    pattern: 'hinge',
+    loadsAreas: ['lower_back', 'hip', 'ankle'],
+  },
+  {
+    nameRu: 'Обратная гиперэкстензия на полу',
+    nameKk: 'Еденде кері гиперэкстензия',
+    muscleGroup: 'legs',
+    equipment: 'без инвентаря',
+    metValue: 3.5,
+    pattern: 'hinge',
+    loadsAreas: ['lower_back', 'hip'],
+  },
+  {
+    nameRu: 'Присед у стены',
+    nameKk: 'Қабырғаға сүйеніп отыру',
+    muscleGroup: 'legs',
+    equipment: 'без инвентаря',
+    metValue: 3.5,
+    pattern: 'quad_iso',
+    loadsAreas: ['knee'],
+  },
+  {
+    nameRu: 'Разгибание ног с гантелью',
+    nameKk: 'Гантельмен аяқты жазу',
+    muscleGroup: 'legs',
+    equipment: 'гантели',
+    metValue: 3.5,
+    pattern: 'quad_iso',
+    loadsAreas: ['knee'],
+  },
+  {
+    nameRu: 'Ягодичный мостик на одной ноге',
+    nameKk: 'Бір аяқпен жамбасты көтеру',
+    muscleGroup: 'legs',
+    equipment: 'без инвентаря',
+    metValue: 3.5,
+    pattern: 'ham_iso',
+    loadsAreas: ['lower_back', 'hip'],
+  },
+  {
+    nameRu: 'Подъёмы на носки с гантелями',
+    nameKk: 'Гантельмен ұшбасқа көтерілу',
+    muscleGroup: 'legs',
+    equipment: 'гантели',
+    metValue: 3.5,
+    pattern: 'calf',
+    loadsAreas: ['ankle'],
+  },
+  {
+    nameRu: 'Пуловер с гантелью',
+    nameKk: 'Гантельмен пуловер',
+    muscleGroup: 'chest',
+    equipment: 'гантели',
+    metValue: 3.5,
+    pattern: 'chest_iso',
+    loadsAreas: ['shoulder', 'lower_back'],
+  },
+  {
+    nameRu: 'Подтягивания обратным хватом',
+    nameKk: 'Кері ұстап тартылу',
+    muscleGroup: 'back',
+    equipment: 'турник',
+    metValue: 6,
+    pattern: 'v_pull',
+    loadsAreas: ['shoulder', 'elbow'],
+  },
+  {
+    nameRu: 'Тяга двух гантелей в наклоне',
+    nameKk: 'Еңкейіп екі гантель тарту',
+    muscleGroup: 'back',
+    equipment: 'гантели',
+    metValue: 5,
+    pattern: 'h_pull',
+    loadsAreas: ['lower_back', 'shoulder', 'elbow'],
+  },
+  {
+    nameRu: 'Австралийские подтягивания',
+    nameKk: 'Көлбеу тартылу',
+    muscleGroup: 'back',
+    equipment: 'турник',
+    metValue: 5,
+    pattern: 'h_pull',
+    loadsAreas: ['shoulder', 'elbow'],
+  },
+  {
+    nameRu: 'Отжимания в стойке у стены',
+    nameKk: 'Қабырғаға сүйеніп тік көтерілу',
+    muscleGroup: 'shoulders',
+    equipment: 'без инвентаря',
+    metValue: 5,
+    pattern: 'v_push',
+    loadsAreas: ['shoulder', 'elbow', 'wrist', 'neck'],
+  },
+  {
+    nameRu: 'Жим гантели одной рукой стоя',
+    nameKk: 'Бір қолмен тұрып гантель итеру',
+    muscleGroup: 'shoulders',
+    equipment: 'гантели',
+    metValue: 5,
+    pattern: 'v_push',
+    loadsAreas: ['shoulder', 'elbow', 'lower_back'],
+  },
+  {
+    nameRu: 'Обратные отжимания от опоры',
+    nameKk: 'Тіректен кері көтерілу',
+    muscleGroup: 'arms',
+    equipment: 'без инвентаря',
+    metValue: 3.8,
+    pattern: 'triceps',
+    loadsAreas: ['elbow', 'shoulder', 'wrist'],
+  },
+  {
+    nameRu: 'Разгибание гантели из-за головы',
+    nameKk: 'Бас артынан гантель жазу',
+    muscleGroup: 'arms',
+    equipment: 'гантели',
+    metValue: 3.5,
+    pattern: 'triceps',
+    loadsAreas: ['elbow', 'shoulder'],
+  },
 ];

@@ -13,6 +13,7 @@ import {
   getEntryMessages,
   localDate,
   localHour,
+  recognitionsUsed,
 } from '@/db/queries';
 import { formatEntrySummary, escapeHtml, welcome } from './format';
 import { refreshDaySummary, tidyEntryMessages } from './pinned';
@@ -145,6 +146,7 @@ bot.command('today', async (ctx) => {
 bot.on('message:photo', async (ctx) => {
   const user = await resolveUser(ctx);
   if (!user) return;
+  if (!(await withinRecognitionLimit(ctx, user))) return;
 
   const t = speak(user);
   const status = await ctx.reply(t('bot.analyzingPhoto'));
@@ -220,6 +222,7 @@ bot.on('message:document', async (ctx) => {
 
   const user = await resolveUser(ctx);
   if (!user) return;
+  if (!(await withinRecognitionLimit(ctx, user))) return;
 
   const status = await ctx.reply(t('bot.analyzingPhoto'));
 
@@ -246,6 +249,7 @@ bot.on('message:text', async (ctx) => {
 
   const user = await resolveUser(ctx);
   if (!user) return;
+  if (!(await withinRecognitionLimit(ctx, user))) return;
 
   const status = await ctx.reply(speak(user)('bot.analyzingText'));
 
@@ -518,6 +522,54 @@ async function downloadPhoto(fileId: string): Promise<string> {
   }
 
   return Buffer.from(await response.arrayBuffer()).toString('base64');
+}
+
+/**
+ * Сколько разборов в час и в сутки может запросить один человек.
+ *
+ * Лимит не про деньги — десять пользователей бюджет не съедят. Он про то,
+ * что один увлёкшийся тестировщик, отправивший подряд пятьдесят фото,
+ * упирается в rate limit модели и в часовую квоту USDA, а разбор после
+ * этого падает у всех остальных: лимиты общие на приложение, а не на
+ * человека. Дешевле притормозить одного, чем сломать всем.
+ *
+ * Числа с запасом: пять приёмов пищи в день — обычная норма, тридцать
+ * в час не наберёт никто, кто действительно ведёт дневник.
+ */
+const MAX_RECOGNITIONS_PER_HOUR = 30;
+const MAX_RECOGNITIONS_PER_DAY = 100;
+
+/**
+ * Проверка лимита до сообщения «анализирую»: иначе человек увидел бы
+ * обещание разобрать снимок, которое тут же сменилось бы отказом.
+ */
+async function withinRecognitionLimit(
+  ctx: Context,
+  user: User,
+): Promise<boolean> {
+  const used = await recognitionsUsed(user.id);
+
+  if (
+    used.hour < MAX_RECOGNITIONS_PER_HOUR &&
+    used.day < MAX_RECOGNITIONS_PER_DAY
+  ) {
+    return true;
+  }
+
+  const t = speak(user);
+  const perHour = used.hour >= MAX_RECOGNITIONS_PER_HOUR;
+
+  console.warn(
+    `Лимит разборов у ${user.telegramId}: ${used.hour}/час, ${used.day}/сутки`,
+  );
+
+  await ctx.reply(
+    perHour
+      ? t('bot.limitHour', { limit: MAX_RECOGNITIONS_PER_HOUR })
+      : t('bot.limitDay', { limit: MAX_RECOGNITIONS_PER_DAY }),
+  );
+
+  return false;
 }
 
 async function reportFailure(
