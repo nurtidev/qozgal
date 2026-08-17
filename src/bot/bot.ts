@@ -16,6 +16,15 @@ import {
   recognitionsUsed,
 } from '@/db/queries';
 import { formatEntrySummary, escapeHtml, welcome } from './format';
+import {
+  saveWeight,
+  undoWeight,
+  saveWaist,
+  setAwaiting,
+  lastWaistDate,
+  remindersOffKeyboard,
+} from './ask-metrics';
+import { parseMetric, looksLikeWeight, looksLikeWaist, shouldAskWaist } from './reminders';
 import { refreshDaySummary, tidyEntryMessages } from './pinned';
 import { translator, toLocale, type Locale } from '@/i18n/messages';
 import { db } from '@/db';
@@ -86,6 +95,52 @@ bot.command('tidy', async (ctx) => {
   const next = !user.tidyChat;
   await db.update(users).set({ tidyChat: next }).where(eq(users.id, user.id));
   await ctx.reply(speak(user)(next ? 'bot.tidyOn' : 'bot.tidyOff'));
+});
+
+/**
+ * Переключатель утренних вопросов.
+ *
+ * Отключить можно и кнопкой под самим вопросом — так человек находит выход
+ * там, где он ему понадобился. Команда нужна, чтобы включить обратно.
+ */
+bot.command('reminders', async (ctx) => {
+  const user = await resolveUser(ctx);
+  if (!user) return;
+
+  const next = !user.remindersOn;
+  await db
+    .update(users)
+    .set({ remindersOn: next, awaitingInput: null })
+    .where(eq(users.id, user.id));
+
+  await ctx.reply(
+    speak(user)(next ? 'bot.remindersEnabled' : 'bot.remindersDisabled'),
+  );
+});
+
+bot.callbackQuery('reminders:off', async (ctx) => {
+  const user = await resolveUser(ctx);
+  if (!user) return;
+
+  await db
+    .update(users)
+    .set({ remindersOn: false, awaitingInput: null })
+    .where(eq(users.id, user.id));
+
+  await ctx.answerCallbackQuery();
+  // Кнопку убираем: она отработала, и повторное нажатие ничего не изменит
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+  await ctx.reply(speak(user)('bot.remindersDisabled'));
+});
+
+bot.callbackQuery('weight:undo', async (ctx) => {
+  const user = await resolveUser(ctx);
+  if (!user) return;
+
+  await undoWeight(user);
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+  await ctx.reply(speak(user)('bot.weightUndone'));
 });
 
 bot.command('app', async (ctx) => {
@@ -249,6 +304,11 @@ bot.on('message:text', async (ctx) => {
 
   const user = await resolveUser(ctx);
   if (!user) return;
+
+  // Число без слов — это замер, а не еда. Проверяем до вызова модели:
+  // «73.4» стоило бы разбора фотографии, а ответ был бы бессмысленным
+  if (await handleMetric(ctx, user)) return;
+
   if (!(await withinRecognitionLimit(ctx, user))) return;
 
   const status = await ctx.reply(speak(user)('bot.analyzingText'));
@@ -570,6 +630,65 @@ async function withinRecognitionLimit(
   );
 
   return false;
+}
+
+/**
+ * Замер вместо еды.
+ *
+ * Число без слов в чате — это вес или талия, и разбирать его моделью
+ * бессмысленно: «73.4» не блюдо. Талия принимается только когда бот сам
+ * о ней спросил: «200» одинаково подходит под килограммы и сантиметры,
+ * и различить их можно лишь по тому, о чём шёл разговор.
+ *
+ * Запись веса обратима кнопкой: человек мог иметь в виду «200» граммов
+ * чего-то и не написать, чего именно.
+ *
+ * @returns взяли ли сообщение на себя
+ */
+async function handleMetric(ctx: Context, user: User): Promise<boolean> {
+  const text = ctx.message?.text;
+  if (!text) return false;
+
+  const value = parseMetric(text);
+  if (value === null) return false;
+
+  const t = speak(user);
+
+  if (user.awaitingInput === 'waist') {
+    if (!looksLikeWaist(value)) return false;
+
+    const saved = await saveWaist(user, value);
+    await setAwaiting(user, null);
+    await ctx.reply(
+      saved ? t('bot.waistSaved', { waist: value }) : t('bot.waistNeedsApp'),
+    );
+    return true;
+  }
+
+  if (!looksLikeWeight(value)) return false;
+
+  await saveWeight(user, value);
+  await setAwaiting(user, null);
+
+  await ctx.reply(t('bot.weightSaved', { weight: value }), {
+    reply_markup: new InlineKeyboard().text(t('bot.notWeight'), 'weight:undo'),
+  });
+
+  // Про талию спрашиваем вслед за весом: человек уже стоит у зеркала,
+  // а отдельное сообщение утром превратило бы напоминание в анкету
+  const date = localDate(user.timezone);
+  const ready = shouldAskWaist({
+    localDate: date,
+    lastWaistOn: await lastWaistDate(user.id),
+    waistAskedOn: user.waistAskedOn,
+  });
+
+  if (ready) {
+    await ctx.reply(t('bot.askWaist'));
+    await setAwaiting(user, 'waist', date);
+  }
+
+  return true;
 }
 
 async function reportFailure(

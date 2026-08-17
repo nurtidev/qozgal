@@ -1,6 +1,7 @@
 import { bot } from './bot';
 import { publishProfile } from './profile';
 import { rollDailySummaries } from './pinned';
+import { askMorningWeight } from './ask-metrics';
 
 /**
  * Запуск бота отдельным процессом через long polling.
@@ -29,6 +30,12 @@ async function main() {
   setInterval(() => {
     rollDailySummaries(bot.api).catch((error) =>
       console.error('Не удалось обновить закреплённые сводки:', error),
+    );
+
+    // Тем же интервалом и по той же причине: утро у каждого своё, и попасть
+    // в него можно только сверяя локальное время
+    askMorningWeight(bot.api).catch((error) =>
+      console.error('Не удалось спросить вес:', error),
     );
   }, ROLL_INTERVAL_MS);
 
