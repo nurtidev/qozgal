@@ -22,7 +22,6 @@ import {
   saveWaist,
   setAwaiting,
   lastWaistDate,
-  remindersOffKeyboard,
 } from './ask-metrics';
 import { parseMetric, looksLikeWeight, looksLikeWaist, shouldAskWaist } from './reminders';
 import { refreshDaySummary, tidyEntryMessages } from './pinned';
