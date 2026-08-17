@@ -296,3 +296,53 @@ describe('Номенклатура USDA', () => {
     assert.equal(pickBestMatch({ nameEn: 'rice', preparation: 'boiled' }, [long, short]), short);
   });
 });
+
+/**
+ * Готовые изделия — случай из живого бота: наггетсы распознались, но остались
+ * без калорий, и день показал ноль при 230 граммах съеденного.
+ */
+describe('Готовые изделия', () => {
+  const ready = usda('Chicken nuggets, NFS', { kcalPer100g: 307, isVerified: false });
+
+  test('жареное по своей природе не требует слова «fried» в описании', () => {
+    // Модель называет наггетсы жареными, и это правда. Но в USDA слова
+    // «fried» нет ни у одного варианта, а правило «для жарки нужно точное
+    // совпадение» отбраковывало все 127 кандидатов
+    const best = pickBestMatch(
+      { nameEn: 'chicken nuggets', preparation: 'fried' },
+      [ready],
+    );
+    assert.equal(best, ready);
+  });
+
+  test('замороженный полуфабрикат всё равно отбраковывается', () => {
+    const frozen = usda('Chicken, nuggets, white meat, precooked, frozen, not reheated', {
+      kcalPer100g: 261,
+    });
+    const best = pickBestMatch(
+      { nameEn: 'chicken nuggets', preparation: 'fried' },
+      [frozen, ready],
+    );
+    assert.equal(best, ready);
+  });
+
+  test('«not reheated» не считается подтверждением готовности', () => {
+    // Слово «not» служебное и выбрасывается при токенизации, поэтому
+    // отрицание проверяется по соседству слов
+    const frozen = usda('Chicken, nuggets, precooked, frozen, not reheated', {
+      kcalPer100g: 261,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'chicken nuggets' }, [frozen]), null);
+  });
+
+  test('сырому продукту послабление не даётся', () => {
+    // Правило про готовые изделия не должно превратиться в дыру: картошка
+    // изделием не является, и «просто приготовленная» вместо жареной
+    // по-прежнему занижает вдвое
+    const cooked = usda('Potato, cooked, as ingredient', { kcalPer100g: 81 });
+    assert.equal(
+      pickBestMatch({ nameEn: 'potato', preparation: 'fried' }, [cooked]),
+      null,
+    );
+  });
+});

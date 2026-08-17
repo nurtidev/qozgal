@@ -212,6 +212,24 @@ const PARTS = new Set(PART_WORDS.map(singular));
 /** Предлоги, после которых слово читается как уточнение, а не как продукт */
 const QUALIFYING_PREPOSITIONS = new Set(['with', 'without', 'in']);
 
+/** Слова, переворачивающие смысл следующего за ними: «not reheated» */
+const NEGATIONS = new Set(['not', 'no', 'without', 'un']);
+
+/**
+ * Есть ли в описании слово из набора, не под отрицанием.
+ *
+ * Нужно из-за строки `Chicken, nuggets, white meat, precooked, frozen,
+ * not reheated`: слово «not» служебное и выбрасывается при токенизации,
+ * поэтому «not reheated» читалось как подтверждение готовности — и
+ * замороженный полуфабрикат (261 ккал) выигрывал у готовых наггетсов (307).
+ */
+function affirms(tokens: string[], words: Set<string>): boolean {
+  return tokens.some(
+    (token, index) =>
+      words.has(token) && !(index > 0 && NEGATIONS.has(tokens[index - 1])),
+  );
+}
+
 const GRAINS = new Set(GRAIN_FORMS.map(singular));
 
 /** Уточняющее слово: модификатор либо состояние */
@@ -269,6 +287,30 @@ const PREPARATION_WORDS: Record<Exclude<Preparation, 'unknown'>, string[]> = {
  * про то, что с ней сделали перед едой.
  */
 const GENERIC_COOKED = new Set(['cooked', 'prepared', 'heated', 'reheated']);
+
+/**
+ * Готовые изделия: продукты, у которых способ приготовления уже внутри
+ * названия.
+ *
+ * Спрашивать у такой карточки, жареная она или варёная, бессмысленно —
+ * сырых наггетсов не едят, и жир от фритюра посчитан в самой строке.
+ * А проверка состояния на них ломалась: модель называет наггетсы жареными
+ * (так и есть), в описаниях USDA слова «fried» нет ни у одного варианта
+ * (`Chicken nuggets, NFS`, `from fast food`, `precooked, frozen`), и все
+ * 127 кандидатов отбраковывались. Позиция уходила в ручной ввод, а день
+ * оставался с нулём — при том что нужные 307 ккал/100 г в базе есть.
+ *
+ * Слова взяты из PROCESSED_FORMS: там они означают «другой продукт»,
+ * если их нет в запросе, а здесь — «продукт уже приготовлен», если есть.
+ */
+const READY_FORMS = new Set(
+  [
+    'nuggets', 'fries', 'chips', 'pie', 'cake', 'cookie', 'cookies', 'wafer',
+    'croissant', 'croissants', 'doughnut', 'muffin', 'pastry', 'brownie',
+    'patty', 'sandwich', 'burger', 'pizza', 'wrap', 'roll', 'popcorn',
+    'crackers', 'sausage', 'strudel', 'cobbler',
+  ].map(singular),
+);
 
 const PREPARATION = Object.fromEntries(
   Object.entries(PREPARATION_WORDS).map(([key, words]) => [
@@ -335,6 +377,8 @@ const WEIGHTS = {
    * хлеб. На «apple» иначе выигрывало `Apple, baked` (113 ккал против 61).
    */
   unaskedCooking: -0.5,
+  /** Замороженная заготовка там, где способ приготовления не назван */
+  frozenBlank: -1,
   /** Лишнее значимое слово вне сегмента совпадения */
   noise: -0.3,
 } as const;
@@ -509,8 +553,8 @@ export function scoreCandidate(
 
   if (wanted) {
     const synonyms = PREPARATION[wanted];
-    const exact = descriptionTokens.some((t) => synonyms.has(t));
-    const generic = descriptionTokens.some((t) => GENERIC_COOKED.has(t));
+    const exact = affirms(descriptionTokens, synonyms);
+    const generic = affirms(descriptionTokens, GENERIC_COOKED);
     const otherMethod = descriptionTokens.some(
       (t) => ANY_METHOD.has(t) && !synonyms.has(t),
     );
@@ -524,11 +568,11 @@ export function scoreCandidate(
      */
     const frozenBlank =
       descriptionTokens.includes('frozen') &&
-      !descriptionTokens.some((t) => GENERIC_COOKED.has(t));
+      !affirms(descriptionTokens, GENERIC_COOKED);
     const raw = frozenBlank || descriptionTokens.some((t) => RAW.has(t));
     // Только про готовку: `ANY_METHOD` включает и слова о сыром, и на
     // «сырой помидор» строка `Tomatoes, grape, raw` считалась противоречием
-    const cooked = generic || descriptionTokens.some((t) => COOKED.has(t));
+    const cooked = generic || affirms(descriptionTokens, COOKED);
 
     /**
      * Сырое проверяется раньше способа приготовления.
@@ -538,10 +582,19 @@ export function scoreCandidate(
      * точное совпадение, хотя «unprepared» означает, что готовить его ещё
      * предстоит. На запрос о жареной картошке это ответ о замороженной.
      */
+    /**
+     * У готового изделия способ приготовления не спрашиваем: он уже
+     * в названии. Проверка на сырое при этом остаётся — «frozen, not
+     * reheated» это полуфабрикат, а не блюдо с тарелки.
+     */
+    const readyMade = core.some((token) => READY_FORMS.has(token));
+
     if (wanted !== 'raw' && raw && !generic) {
       score += WEIGHTS.stateConflict;
     } else if (wanted === 'raw' && cooked) {
       score += WEIGHTS.stateConflict;
+    } else if (readyMade) {
+      // Ни бонуса, ни штрафа: состояние тут ничего не различает
     } else if (exact) {
       score += WEIGHTS.methodMatch;
     } else if (wanted === 'fried') {
@@ -573,6 +626,17 @@ export function scoreCandidate(
     } else {
       score += WEIGHTS.stateUnconfirmed;
     }
+  } else if (
+    descriptionTokens.includes('frozen') &&
+    !affirms(descriptionTokens, GENERIC_COOKED)
+  ) {
+    /**
+     * Способ модель не назвала, но замороженная заготовка — точно не то,
+     * что лежало на тарелке. На «наггетсы» так выигрывала строка
+     * `Chicken, nuggets, precooked, frozen, not reheated` (261 ккал)
+     * у готовых `Chicken nuggets, NFS` (307).
+     */
+    score += WEIGHTS.frozenBlank;
   } else if (descriptionTokens.some((t) => COOKED.has(t))) {
     score += WEIGHTS.unaskedCooking;
   }

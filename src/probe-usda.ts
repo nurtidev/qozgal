@@ -53,6 +53,12 @@ const PROBES: Probe[] = [
   { nameEn: 'lamb', preparation: 'boiled', expect: 'баранина готовая — ключевой ингредиент куырдака' },
   { nameEn: 'wheat flour', expect: 'мука ~364' },
   { nameEn: 'sugar', expect: 'сахар ~387' },
+  // Пришло из живого бота: наггетсы распознались, но остались без калорий
+  { nameEn: 'chicken nuggets', preparation: 'fried', expect: 'наггетсы ~300, жарка уже в продукте' },
+  // Известное ограничение: в выдаче по этому запросу остаются брендовые
+  // строки (McDONALD'S, WENDY'S) и замороженные полуфабрикаты, и то и другое
+  // отбор отвергает — бренд стоит первым сегментом, полуфабрикат сырой
+  { nameEn: 'french fries', preparation: 'fried', expect: 'скорее отказ: только бренды и заготовки' },
   { nameEn: 'beshbarmak', expect: 'отказ: в USDA такого нет' },
   { nameEn: 'kurt', expect: 'отказ: в USDA такого нет' },
   { nameEn: 'baursak', expect: 'отказ: в USDA такого нет' },
