@@ -82,6 +82,22 @@ export const entrySourceEnum = pgEnum('entry_source', [
   'manual', // руками из справочника
 ]);
 
+/**
+ * Как прошла тренировка — со слов человека.
+ *
+ * Спрашивается одной кнопкой после первого записанного подхода. Нужно для
+ * прогрессии: поднимать вес имеет смысл, когда прошлая тренировка далась
+ * нормально, а не когда человек еле дошёл до конца. «Больно» стоит отдельно
+ * от «тяжело» намеренно: тяжело — это признак работы, больно — признак
+ * травмы, и вести себя дальше приложение должно совершенно по-разному.
+ */
+export const workoutFeelingEnum = pgEnum('workout_feeling', [
+  'easy',
+  'normal',
+  'hard',
+  'pain',
+]);
+
 export const entryStatusEnum = pgEnum('entry_status', [
   'pending', // ИИ разобрал, ждём подтверждения пользователя
   'confirmed', // пользователь подтвердил (возможно, поправив граммовку)
@@ -688,6 +704,18 @@ export const workoutSessions = pgTable(
     performedOn: date('performed_on').notNull(),
     durationMin: integer('duration_min'),
     note: text('note'),
+    /** Как прошла тренировка — по нему строится прогрессия нагрузки */
+    feeling: workoutFeelingEnum('feeling'),
+    /**
+     * На каком упражнении было больно.
+     *
+     * Отдельным полем, а не пометкой у подхода: болит обычно одно движение,
+     * и знать какое важнее, чем в каком именно подходе. Без этого «было
+     * больно» — бесполезный сигнал: заменить или пометить нечего.
+     */
+    painfulExerciseId: uuid('painful_exercise_id').references(() => exercises.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

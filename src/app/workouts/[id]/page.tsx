@@ -18,6 +18,7 @@ import {
   Hint,
   Button,
   Field,
+  Segmented,
   ScreenSkeleton,
   ErrorNote,
 } from '@/components/ui';
@@ -56,11 +57,15 @@ interface PlanDay {
   exercises: PlannedExercise[];
 }
 
+type Feeling = 'easy' | 'normal' | 'hard' | 'pain';
+
 interface Workout {
   id: string;
   performedOn: string;
   durationMin: number | null;
   note: string | null;
+  feeling: Feeling | null;
+  painfulExerciseId: string | null;
   volumeKg: number;
   estimatedBurnKcal: number | null;
   /** Заполнен, если тренировка идёт по программе */
@@ -103,6 +108,12 @@ export default function WorkoutPage() {
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
   const [duration, setDuration] = useState('');
+  /**
+   * Тяжесть подхода. Пустая строка — «не сказал»: заставлять оценивать
+   * каждый подход значит превратить запись между подходами в анкету,
+   * а прогрессии хватает и выборочных оценок.
+   */
+  const [rpe, setRpe] = useState('');
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,6 +193,7 @@ export default function WorkoutPage() {
           exerciseId: chosen.id,
           weightKg: weightValue,
           reps: repsValue,
+          rpe: rpe ? Number(rpe) : null,
         }),
       });
       haptic('success');
@@ -191,6 +203,59 @@ export default function WorkoutPage() {
     } catch (e) {
       haptic('error');
       setError(e instanceof ApiError ? e.message : t('addFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Как прошла тренировка.
+   *
+   * Спрашивается одной кнопкой и только когда есть что оценивать —
+   * после первого записанного подхода. Ответ нужен не для истории:
+   * поднимать вес имеет смысл, когда прошлый раз дался нормально,
+   * а не когда человек еле закончил.
+   */
+  async function setFeeling(next: Feeling) {
+    if (!workout) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/workouts/${workoutId}`, {
+        method: 'PATCH',
+        // Повторное нажатие снимает ответ: ошибиться в четырёх кнопках легко,
+        // а исправить иначе было бы нечем
+        body: JSON.stringify({ feeling: workout.feeling === next ? null : next }),
+      });
+      haptic('success');
+      await load();
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof ApiError ? e.message : tc('saveFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** На каком движении было больно — без этого «больно» нечем использовать */
+  async function setPainful(exerciseId: string) {
+    if (!workout) return;
+
+    setBusy(true);
+    try {
+      await api(`/api/workouts/${workoutId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          painfulExerciseId:
+            workout.painfulExerciseId === exerciseId ? null : exerciseId,
+        }),
+      });
+      haptic('success');
+      await load();
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof ApiError ? e.message : tc('saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -397,6 +462,55 @@ export default function WorkoutPage() {
         ))}
       </section>
 
+      {/* Как прошло — только когда есть что оценивать. Пустую тренировку
+          оценивать нечем, и вопрос над пустым списком выглядел бы упрёком */}
+      {workout.sets.length > 0 && (
+        <Card className="flex flex-col gap-3">
+          <span className="t-label">{t('feelingQuestion')}</span>
+          <Segmented
+            value={workout.feeling ?? ''}
+            onChange={(value) => setFeeling(value as Feeling)}
+            options={[
+              { value: 'easy', label: t('feeling.easy') },
+              { value: 'normal', label: t('feeling.normal') },
+              { value: 'hard', label: t('feeling.hard') },
+              { value: 'pain', label: t('feeling.pain') },
+            ]}
+          />
+
+          {/* «Больно» без указания движения — сигнал, которым нельзя
+              воспользоваться: ни заменить, ни пометить нечего */}
+          {workout.feeling === 'pain' && (
+            <div className="flex flex-col gap-2">
+              <span className="t-caption">{t('painfulQuestion')}</span>
+              <div className="flex flex-col">
+                {[...new Map(workout.sets.map((s) => [s.exerciseId, s])).values()].map(
+                  (set) => (
+                    <button
+                      key={set.exerciseId}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setPainful(set.exerciseId)}
+                      className={`flex min-h-11 items-center justify-between gap-2 border-b border-[var(--tg-theme-hint-color)]/15 text-left last:border-0 ${
+                        workout.painfulExerciseId === set.exerciseId
+                          ? 'text-[var(--tg-theme-destructive-text-color)]'
+                          : ''
+                      }`}
+                    >
+                      <span className="t-body">{set.exerciseName}</span>
+                      {workout.painfulExerciseId === set.exerciseId && (
+                        <span className="t-caption shrink-0">✓</span>
+                      )}
+                    </button>
+                  ),
+                )}
+              </div>
+              {workout.painfulExerciseId && <Hint>{t('painfulHint')}</Hint>}
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Запись подхода: упражнение выбирается один раз и остаётся выбранным,
           дальше между подходами меняются только вес и повторы */}
       <Card className="flex flex-col gap-3">
@@ -435,6 +549,26 @@ export default function WorkoutPage() {
                   onChange={(e) => setReps(e.target.value)}
                 />
               </span>
+            </div>
+
+            {/* Тяжесть — сегментом, а не полем ввода: цифру между подходами
+                набирать неудобно, а выбор из пяти значений — один тап.
+                Ниже шести подход не рабочий, поэтому шкала укороченная */}
+            <div className="flex flex-col gap-1">
+              <span className="t-label">{t('rpe')}</span>
+              <Segmented
+                value={rpe}
+                onChange={setRpe}
+                options={[
+                  { value: '', label: '—' },
+                  { value: '6', label: '6' },
+                  { value: '7', label: '7' },
+                  { value: '8', label: '8' },
+                  { value: '9', label: '9' },
+                  { value: '10', label: '10' },
+                ]}
+              />
+              <Hint>{t('rpeHint')}</Hint>
             </div>
 
             <Button onClick={addSet} loading={busy} disabled={!reps}>

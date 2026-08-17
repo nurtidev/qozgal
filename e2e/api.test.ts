@@ -673,6 +673,71 @@ describe('Программа тренировок', () => {
     assert.equal(missing.status, 404);
   });
 
+  test('ощущение от тренировки и тяжесть подхода сохраняются', async () => {
+    const created = await call('/api/workouts', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    assert.equal(created.status, 200);
+    const workoutId = created.body.id as string;
+
+    const { body: list } = await call('/api/exercises', ALICE);
+    const exercise = (list.exercises as { id: string }[])[0];
+
+    // Тяжесть подхода — основание для прогрессии: поднимать вес имеет смысл,
+    // когда прошлый раз дался нормально
+    const set = await call(`/api/workouts/${workoutId}/sets`, ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ exerciseId: exercise.id, weightKg: 60, reps: 8, rpe: 8 }),
+    });
+    assert.equal(set.status, 200);
+
+    const feeling = await call(`/api/workouts/${workoutId}`, ALICE, {
+      method: 'PATCH',
+      body: JSON.stringify({ feeling: 'pain', painfulExerciseId: exercise.id }),
+    });
+    assert.equal(feeling.status, 200);
+
+    const { body } = await call(`/api/workouts/${workoutId}`, ALICE);
+    assert.equal(body.feeling, 'pain');
+    assert.equal(body.painfulExerciseId, exercise.id);
+    assert.equal((body.sets as { rpe: number | null }[])[0].rpe, 8);
+
+    // Сменив ответ, человек снимает и жалобу: иначе она осталась бы висеть
+    // и влиять на подбор упражнений
+    await call(`/api/workouts/${workoutId}`, ALICE, {
+      method: 'PATCH',
+      body: JSON.stringify({ feeling: 'normal' }),
+    });
+    const { body: after } = await call(`/api/workouts/${workoutId}`, ALICE);
+    assert.equal(after.feeling, 'normal');
+    assert.equal(after.painfulExerciseId, null);
+
+    await call(`/api/workouts/${workoutId}`, ALICE, { method: 'DELETE' });
+  });
+
+  test('чужое ощущение не выставить', async () => {
+    const created = await call('/api/workouts', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    const workoutId = created.body.id as string;
+
+    const other = await call(`/api/workouts/${workoutId}`, BOB, {
+      method: 'PATCH',
+      body: JSON.stringify({ feeling: 'easy' }),
+    });
+    assert.equal(other.status, 404);
+
+    const nonsense = await call(`/api/workouts/${workoutId}`, ALICE, {
+      method: 'PATCH',
+      body: JSON.stringify({ feeling: 'воодушевление' }),
+    });
+    assert.equal(nonsense.status, 422);
+
+    await call(`/api/workouts/${workoutId}`, ALICE, { method: 'DELETE' });
+  });
+
   test('от программы можно отказаться', async () => {
     const dropped = await call('/api/program', ALICE, { method: 'DELETE' });
     assert.equal(dropped.status, 200);

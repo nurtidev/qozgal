@@ -92,6 +92,8 @@ export const GET = route<Params>(async ({ session, params, t }) => {
     performedOn: workout.performedOn,
     durationMin: workout.durationMin,
     note: workout.note,
+    feeling: workout.feeling,
+    painfulExerciseId: workout.painfulExerciseId,
     // План дня, если тренировка идёт по программе: в зале нужно видеть,
     // что осталось сделать, а не вспоминать это по журналу прошлой недели
     planDay: workout.planDayId
@@ -183,6 +185,10 @@ const patchSchema = z.object({
   performedOn: dateSchema.optional(),
   durationMin: z.number().int().min(1).max(600).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
+  /** Как прошла тренировка — основание для прогрессии нагрузки */
+  feeling: z.enum(['easy', 'normal', 'hard', 'pain']).nullable().optional(),
+  /** На каком движении было больно; имеет смысл только при feeling = pain */
+  painfulExerciseId: z.string().uuid().nullable().optional(),
 });
 
 export const PATCH = route<Params>(async ({ session, request, params, t }) => {
@@ -199,6 +205,16 @@ export const PATCH = route<Params>(async ({ session, request, params, t }) => {
       ...(body.performedOn ? { performedOn: body.performedOn } : {}),
       ...(body.durationMin !== undefined ? { durationMin: body.durationMin } : {}),
       ...(body.note !== undefined ? { note: body.note } : {}),
+      ...(body.feeling !== undefined ? { feeling: body.feeling } : {}),
+      // Упражнение с болью держим только при «было больно»: сменив ответ
+      // на «нормально», человек снимает и жалобу, иначе она осталась бы
+      // висеть и влиять на подбор
+      ...(body.feeling !== undefined && body.feeling !== 'pain'
+        ? { painfulExerciseId: null }
+        : {}),
+      ...(body.painfulExerciseId !== undefined
+        ? { painfulExerciseId: body.painfulExerciseId }
+        : {}),
     })
     .where(eq(workoutSessions.id, workout.id));
 
