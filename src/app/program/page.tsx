@@ -30,8 +30,15 @@ interface Conflict {
   severity: InjurySeverity;
 }
 
+type Advice =
+  | { kind: 'increase'; deltaKg: number | null }
+  | { kind: 'hold' }
+  | { kind: 'replace' };
+
 interface PlannedExercise {
   id: string;
+  /** Что делать с весом в этот раз — считается по журналу прошлых тренировок */
+  advice: Advice | null;
   exerciseId: string;
   name: string;
   equipment: string | null;
@@ -392,6 +399,27 @@ export default function ProgramPage() {
                           {medical
                             ? ti('loadsMedical', { areas })
                             : ti('loads', { areas })}
+                        </span>
+                      )}
+
+                      {/* Совет по весу — из журнала прошлых тренировок.
+                          Только предложение: программу, которая меняет вес
+                          сама, человек не запомнит и не сможет проверить */}
+                      {exercise.advice && (
+                        <span
+                          className={`text-[12px] leading-4 ${
+                            exercise.advice.kind === 'replace'
+                              ? 'text-[var(--tg-theme-destructive-text-color)]'
+                              : 'text-[var(--tg-theme-link-color)]'
+                          }`}
+                        >
+                          {exercise.advice.kind === 'increase'
+                            ? exercise.advice.deltaKg === null
+                              ? t('adviceAddRep')
+                              : t('adviceAddWeight', { kg: exercise.advice.deltaKg })
+                            : exercise.advice.kind === 'hold'
+                              ? t('adviceHold')
+                              : t('adviceReplace')}
                         </span>
                       )}
                     </li>

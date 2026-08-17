@@ -11,6 +11,7 @@ import {
   injuries,
   profiles,
   workoutSessions,
+  workoutSets,
 } from '@/db/schema';
 import { localDate, getActiveGoal } from '@/db/queries';
 import { toLocale } from '@/i18n/messages';
@@ -18,8 +19,10 @@ import { conflictsFor } from '@/lib/health/injury';
 import {
   buildProgram,
   levelFromActivity,
+  type MovementPattern,
   type SkippedSlot,
 } from '@/lib/health/program';
+import { advise, type Advice, type SessionLog } from '@/lib/health/progression';
 
 /**
  * Программа тренировок.
@@ -86,6 +89,8 @@ export const GET = route(async ({ session }) => {
       and(eq(injuries.userId, session.user.id), isNull(injuries.resolvedOn)),
     );
 
+  const advices = await progressionAdvice(session.user.id, rows);
+
   return Response.json({
     program: {
       id: plan.id,
@@ -104,6 +109,7 @@ export const GET = route(async ({ session }) => {
           .filter((r) => r.planned.dayId === day.id)
           .map((r) => ({
             id: r.planned.id,
+            advice: advices.get(r.planned.id) ?? null,
             exerciseId: r.exercise.id,
             name:
               (locale === 'kk' ? r.exercise.nameKk : r.exercise.nameRu) ??
@@ -153,6 +159,95 @@ async function nextDayIndex(planId: string, daysPerWeek: number): Promise<number
   if (!lastIndex) return 1;
 
   return (lastIndex % daysPerWeek) + 1;
+}
+
+/**
+ * Совет по весу для каждого упражнения программы.
+ *
+ * Историю берём одним запросом на всю программу, а не по упражнению:
+ * в шестидневном плане это тридцать шесть запросов на открытие экрана.
+ *
+ * Правила считает `lib/health/progression`. Здесь только сбор данных —
+ * и это разделение не косметика: правила проверяются юнит-тестами, а
+ * запросы к базе в тестах не участвуют.
+ */
+async function progressionAdvice(
+  userId: string,
+  rows: { planned: typeof planExercises.$inferSelect }[],
+): Promise<Map<string, Advice>> {
+  const advices = new Map<string, Advice>();
+  if (rows.length === 0) return advices;
+
+  const exerciseIds = [...new Set(rows.map((r) => r.planned.exerciseId))];
+
+  /**
+   * Две последние тренировки на упражнение — столько же, сколько требуют
+   * правила. Берём с запасом по сессиям и режем в памяти: LIMIT на группу
+   * в SQL пришлось бы писать оконной функцией, а выигрыш здесь нулевой.
+   */
+  const logs = await db
+    .select({
+      exerciseId: workoutSets.exerciseId,
+      sessionId: workoutSets.sessionId,
+      performedOn: workoutSessions.performedOn,
+      feeling: workoutSessions.feeling,
+      painfulExerciseId: workoutSessions.painfulExerciseId,
+      weightKg: workoutSets.weightKg,
+      reps: workoutSets.reps,
+      rpe: workoutSets.rpe,
+    })
+    .from(workoutSets)
+    .innerJoin(workoutSessions, eq(workoutSessions.id, workoutSets.sessionId))
+    .where(
+      and(
+        eq(workoutSessions.userId, userId),
+        inArray(workoutSets.exerciseId, exerciseIds),
+      ),
+    )
+    .orderBy(desc(workoutSessions.performedOn), desc(workoutSessions.createdAt));
+
+  /** Подходы, сгруппированные по упражнению и тренировке */
+  const byExercise = new Map<string, Map<string, SessionLog>>();
+
+  for (const row of logs) {
+    const sessions = byExercise.get(row.exerciseId) ?? new Map<string, SessionLog>();
+    const existing = sessions.get(row.sessionId) ?? {
+      performedOn: row.performedOn,
+      feeling: row.feeling,
+      painful: row.painfulExerciseId === row.exerciseId,
+      sets: [],
+    };
+
+    existing.sets.push({
+      weightKg: row.weightKg,
+      reps: row.reps,
+      rpe: row.rpe,
+    });
+    sessions.set(row.sessionId, existing);
+    byExercise.set(row.exerciseId, sessions);
+  }
+
+  for (const { planned } of rows) {
+    const history = [...(byExercise.get(planned.exerciseId)?.values() ?? [])];
+
+    // Кардио считается минутами: прибавлять к нему вес нечего
+    if (!planned.pattern || planned.pattern === 'cardio' || planned.repMax === null) {
+      continue;
+    }
+
+    advices.set(
+      planned.id,
+      advise({
+        pattern: planned.pattern as MovementPattern,
+        repMin: planned.repMin ?? 0,
+        repMax: planned.repMax,
+        plannedSets: planned.sets,
+        history,
+      }),
+    );
+  }
+
+  return advices;
 }
 
 /* ─────────────────────────── Сборка программы ──────────────────────── */
