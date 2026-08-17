@@ -454,6 +454,7 @@ describe('Травмы и ограничения', () => {
 describe('Программа тренировок', () => {
   interface PlannedExercise {
     id: string;
+    advice: { kind: string; deltaKg: number | null } | null;
     exerciseId: string;
     name: string;
     sets: number;
@@ -596,6 +597,26 @@ describe('Программа тренировок', () => {
       body: JSON.stringify({ daysPerWeek: 3, place: 'улица' }),
     });
     assert.equal(nowhere.status, 422);
+  });
+
+  test('совет по весу приходит с программой и молчит без истории', async () => {
+    await call('/api/program', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ daysPerWeek: 3, place: 'gym' }),
+    });
+
+    const plan = await program();
+    const силовые = plan.days
+      .flatMap((d) => d.exercises)
+      .filter((e) => e.durationMin === null);
+
+    assert.ok(силовые.length > 0);
+    // Поле есть у каждого силового упражнения, но пустое: журнала нет,
+    // и совет наугад человек выполнил бы не проверяя
+    for (const exercise of силовые) {
+      assert.ok('advice' in exercise, 'совет должен приходить полем');
+      assert.equal(exercise.advice, null);
+    }
   });
 
   test('упражнение можно заменить, не пересобирая программу', async () => {
