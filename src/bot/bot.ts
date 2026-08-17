@@ -142,6 +142,25 @@ bot.callbackQuery('weight:undo', async (ctx) => {
   await ctx.reply(speak(user)('bot.weightUndone'));
 });
 
+/**
+ * Обратная связь.
+ *
+ * Без неё человек, у которого разбор упал, просто молчит: сообщение об
+ * ошибке предлагает попробовать ещё раз, и на этом путь заканчивается.
+ * Для пилота это дороже любой фичи — десять человек либо расскажут, что
+ * не работает, либо тихо уйдут.
+ *
+ * Отзыв уходит владельцу в Telegram, если задан OWNER_TELEGRAM_ID, и в лог
+ * всегда: лог не потеряет, даже если переменную забыли.
+ */
+bot.command('feedback', async (ctx) => {
+  const user = await resolveUser(ctx);
+  if (!user) return;
+
+  await setAwaiting(user, 'feedback');
+  await ctx.reply(speak(user)('bot.feedbackPrompt'));
+});
+
 bot.command('app', async (ctx) => {
   const locale = toLocale(ctx.from?.language_code);
   await ctx.reply(translator(locale)('bot.appPrompt'), {
@@ -303,6 +322,12 @@ bot.on('message:text', async (ctx) => {
 
   const user = await resolveUser(ctx);
   if (!user) return;
+
+  // Ответ на просьбу рассказать о проблеме — не еда и не замер
+  if (user.awaitingInput === 'feedback') {
+    await forwardFeedback(ctx, user);
+    return;
+  }
 
   // Число без слов — это замер, а не еда. Проверяем до вызова модели:
   // «73.4» стоило бы разбора фотографии, а ответ был бы бессмысленным
@@ -629,6 +654,28 @@ async function withinRecognitionLimit(
   );
 
   return false;
+}
+
+/** Пересылает отзыв владельцу и всегда пишет его в лог */
+async function forwardFeedback(ctx: Context, user: User): Promise<void> {
+  const text = ctx.message?.text ?? '';
+  await setAwaiting(user, null);
+
+  console.log(
+    `Отзыв от ${user.telegramId} (${user.username ?? 'без username'}): ${text}`,
+  );
+
+  if (env.OWNER_TELEGRAM_ID) {
+    await ctx.api
+      .sendMessage(
+        env.OWNER_TELEGRAM_ID,
+        `Отзыв от ${user.firstName ?? ''} @${user.username ?? '—'} (${user.telegramId}):\n\n${text}`,
+      )
+      // Молча: человек уже написал, и наши проблемы с доставкой — не его дело
+      .catch((error) => console.error('Не удалось переслать отзыв:', error));
+  }
+
+  await ctx.reply(speak(user)('bot.feedbackThanks'));
 }
 
 /**

@@ -24,7 +24,7 @@ const LOCALES: { locale: Locale; languageCode?: LanguageCode }[] = [
   { locale: 'kk', languageCode: 'kk' },
 ];
 
-const COMMANDS = ['start', 'today', 'app'] as const;
+const COMMANDS = ['start', 'today', 'app', 'feedback'] as const;
 
 /** Ограничения Telegram: описание 512 символов, короткое — 120 */
 const MAX_DESCRIPTION = 512;

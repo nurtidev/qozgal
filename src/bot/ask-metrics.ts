@@ -168,10 +168,15 @@ export async function saveWaist(user: User, waistCm: number): Promise<boolean> {
   return true;
 }
 
-/** Что бот ждёт от следующего числа в чате */
+/**
+ * Что бот ждёт от следующего сообщения.
+ *
+ * Одно поле на все ожидания: их не может быть двух одновременно — человек
+ * отвечает на последний вопрос, а не на все сразу.
+ */
 export async function setAwaiting(
   user: User,
-  awaiting: 'weight' | 'waist' | null,
+  awaiting: 'weight' | 'waist' | 'feedback' | null,
   waistAskedOn?: string,
 ): Promise<void> {
   await db
