@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { users, weightLogs, bodyMeasurements, type User } from '@/db/schema';
 import { localDate, localHour } from '@/db/queries';
 import { translator, toLocale } from '@/i18n/messages';
-import { shouldAskWeight, shouldAskWaist } from './reminders';
+import { shouldAskWeight } from './reminders';
 
 /**
  * Утренний вопрос про вес и, раз в две недели, про талию.
