@@ -47,6 +47,16 @@ export type MovementPattern =
   | 'triceps'
   | 'quad_iso'
   | 'ham_iso'
+  /**
+   * Отведение и приведение бедра — абдуктор и аддуктор.
+   *
+   * Появилось из живого журнала: человек сделал их на тренировке ног,
+   * а в справочнике таких движений не было вовсе, и записать их было нечем.
+   * Отдельным паттерном, а не внутри `quad_iso`: там работает передняя
+   * поверхность, здесь — средняя ягодичная и приводящие, и заменять одно
+   * другим нельзя.
+   */
+  | 'hip_iso'
   | 'calf'
   | 'core'
   | 'cardio';
@@ -219,11 +229,11 @@ const DAY_SLOTS: Record<DayFocus, MovementPattern[]> = {
   full_c: ['lunge', 'h_push', 'h_pull', 'core', 'biceps'],
   push: ['h_push', 'v_push', 'chest_iso', 'triceps', 'delt_iso', 'core'],
   pull: ['v_pull', 'h_pull', 'hinge', 'biceps', 'delt_iso', 'core'],
-  legs: ['squat', 'hinge', 'lunge', 'quad_iso', 'ham_iso', 'calf'],
+  legs: ['squat', 'hinge', 'lunge', 'quad_iso', 'ham_iso', 'calf', 'hip_iso'],
   upper_a: ['h_push', 'h_pull', 'v_push', 'v_pull', 'biceps', 'triceps'],
-  lower_a: ['squat', 'hinge', 'lunge', 'calf', 'core'],
+  lower_a: ['squat', 'hinge', 'lunge', 'calf', 'core', 'hip_iso'],
   upper_b: ['v_push', 'v_pull', 'h_push', 'h_pull', 'delt_iso', 'triceps'],
-  lower_b: ['hinge', 'squat', 'ham_iso', 'quad_iso', 'core'],
+  lower_b: ['hinge', 'squat', 'ham_iso', 'quad_iso', 'core', 'hip_iso'],
 };
 
 /** Сколько упражнений в дне. Новичку короче: важнее прийти во второй раз */
@@ -245,6 +255,7 @@ const ROLE: Record<MovementPattern, Role> = {
   triceps: 'accessory',
   quad_iso: 'accessory',
   ham_iso: 'accessory',
+  hip_iso: 'accessory',
   calf: 'accessory',
   core: 'core',
   cardio: 'cardio',
