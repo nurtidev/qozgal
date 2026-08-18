@@ -23,7 +23,7 @@ import {
   setAwaiting,
   lastWaistDate,
 } from './ask-metrics';
-import { parseMetric, looksLikeWeight, looksLikeWaist, shouldAskWaist } from './reminders';
+import { parseMetric, looksLikeWeight, looksLikeWaist, waistPrompt } from './reminders';
 import { refreshDaySummary, tidyEntryMessages } from './pinned';
 import { translator, toLocale, type Locale } from '@/i18n/messages';
 import { db } from '@/db';
@@ -53,6 +53,14 @@ function appKeyboard(locale: Locale): InlineKeyboard {
   return new InlineKeyboard().webApp(
     translator(locale)('bot.openApp'),
     clientEnv.NEXT_PUBLIC_APP_URL,
+  );
+}
+
+/** Кнопка на экран замеров: первый замер делается только в приложении */
+function measurementsKeyboard(locale: Locale): InlineKeyboard {
+  return new InlineKeyboard().webApp(
+    translator(locale)('bot.openMeasurements'),
+    `${clientEnv.NEXT_PUBLIC_APP_URL}/measurements`,
   );
 }
 
@@ -720,18 +728,29 @@ async function handleMetric(ctx: Context, user: User): Promise<boolean> {
     reply_markup: new InlineKeyboard().text(t('bot.notWeight'), 'weight:undo'),
   });
 
-  // Про талию спрашиваем вслед за весом: человек уже стоит у зеркала,
+  // Про обхваты говорим вслед за весом: человек уже стоит у зеркала,
   // а отдельное сообщение утром превратило бы напоминание в анкету
   const date = localDate(user.timezone);
-  const ready = shouldAskWaist({
+  const prompt = waistPrompt({
     localDate: date,
     lastWaistOn: await lastWaistDate(user.id),
     waistAskedOn: user.waistAskedOn,
   });
 
-  if (ready) {
+  if (prompt === 'ask') {
     await ctx.reply(t('bot.askWaist'));
     await setAwaiting(user, 'waist', date);
+  } else if (prompt === 'offer') {
+    /**
+     * Первый замер делается в приложении: там спрашивают шею и бёдра,
+     * без которых процент жира не считается, а одну талию сохранить некуда.
+     * Пока этого сообщения не было, ветка с обхватами не включалась ни
+     * у кого — бот молчал, а человек не знал, что от него ждут.
+     */
+    await ctx.reply(t('bot.offerMeasurements'), {
+      reply_markup: measurementsKeyboard(toLocale(user.locale)),
+    });
+    await setAwaiting(user, null, date);
   }
 
   return true;

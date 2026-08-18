@@ -99,29 +99,41 @@ export interface WaistAskState {
 }
 
 /**
- * Пора ли спрашивать талию.
+ * Что сказать про обхваты вслед за присланным весом.
  *
- * Вопрос идёт вслед за ответом про вес, а не отдельным сообщением: два
- * вопроса подряд утром — это уже анкета, её закрывают. А человек, который
- * только что назвал вес, стоит у зеркала и лента у него под рукой.
+ * Вопрос идёт следом за весом, а не отдельным сообщением: два вопроса
+ * подряд утром — это уже анкета, её закрывают. А человек, который только
+ * что назвал вес, стоит у зеркала и лента у него под рукой.
+ *
+ *  — `ask` — спросить талию числом. Годится, когда прошлый замер есть:
+ *    обхват шеи в записи обязателен (он нужен для процента жира), и взять
+ *    его можно только оттуда — шея почти не меняется;
+ *  — `offer` — предложить сделать первый замер в приложении, где
+ *    спрашивают все обхваты сразу. Без этого ветка с талией никогда
+ *    не включалась: бот молчал, а человек не знал, что от него ждут;
+ *  — `null` — молчать.
+ *
+ * Оба случая ограничены одним ритмом и одним полем `waistAskedOn`: раз
+ * в две недели человека беспокоят про обхваты, и неважно, вопросом или
+ * предложением.
  */
-export function shouldAskWaist(state: WaistAskState): boolean {
-  if (state.waistAskedOn === state.localDate) return false;
+export type WaistPrompt = 'ask' | 'offer' | null;
 
-  /**
-   * Без прошлого замера не спрашиваем вовсе.
-   *
-   * Процент жира считается по обхватам шеи, талии и бёдер, и шея в записи
-   * обязательна — одну талию сохранить некуда. Взять шею можно только из
-   * предыдущего замера (она почти не меняется), поэтому первый замер
-   * делается в приложении, где спрашивают все обхваты сразу. Спрашивать
-   * то, что не сможем записать, — худшее из возможного.
-   */
-  if (!state.lastWaistOn) return false;
+export function waistPrompt(state: WaistAskState): WaistPrompt {
+  if (state.waistAskedOn === state.localDate) return null;
+
+  const asked = state.waistAskedOn
+    ? differenceInCalendarDays(parseISO(state.localDate), parseISO(state.waistAskedOn))
+    : null;
+
+  // Про обхваты напоминаем в том же ритме, что и замеряем
+  if (asked !== null && asked < WAIST_EVERY_DAYS) return null;
+
+  if (!state.lastWaistOn) return 'offer';
 
   const days = differenceInCalendarDays(
     parseISO(state.localDate),
     parseISO(state.lastWaistOn),
   );
-  return days >= WAIST_EVERY_DAYS;
+  return days >= WAIST_EVERY_DAYS ? 'ask' : null;
 }

@@ -6,7 +6,7 @@ import {
   looksLikeWeight,
   looksLikeWaist,
   shouldAskWeight,
-  shouldAskWaist,
+  waistPrompt,
   ASK_HOUR,
   WAIST_EVERY_DAYS,
 } from './reminders';
@@ -88,38 +88,60 @@ describe('Когда спрашивать вес', () => {
   });
 });
 
-describe('Когда спрашивать талию', () => {
-  test('без первого замера не спрашиваем', () => {
-    // Записать одну талию некуда: обхват шеи в записи обязателен, он нужен
-    // для процента жира, и взять его можно только из прошлого замера
-    assert.ok(
-      !shouldAskWaist({
-        localDate: '2026-08-12',
-        lastWaistOn: null,
-        waistAskedOn: null,
-      }),
+describe('Что говорить про обхваты', () => {
+  test('без первого замера предлагаем сделать его в приложении', () => {
+    // Записать одну талию некуда: обхват шеи обязателен, он нужен для
+    // процента жира. Пока этого предложения не было, ветка с обхватами
+    // не включалась ни у кого — бот молчал, человек не знал, что от него ждут
+    assert.equal(
+      waistPrompt({ localDate: '2026-08-12', lastWaistOn: null, waistAskedOn: null }),
+      'offer',
     );
   });
 
-  test('через две недели после последнего замера', () => {
+  test('через две недели после замера спрашиваем талию числом', () => {
     const localDate = '2026-08-12';
-    assert.ok(
-      !shouldAskWaist({ localDate, lastWaistOn: '2026-08-05', waistAskedOn: null }),
+    assert.equal(
+      waistPrompt({ localDate, lastWaistOn: '2026-08-05', waistAskedOn: null }),
+      null,
       'через неделю разница обычно в пределах погрешности ленты',
     );
-    assert.ok(
-      shouldAskWaist({ localDate, lastWaistOn: '2026-07-29', waistAskedOn: null }),
+    assert.equal(
+      waistPrompt({ localDate, lastWaistOn: '2026-07-29', waistAskedOn: null }),
+      'ask',
       `${WAIST_EVERY_DAYS} дней прошло — пора`,
     );
   });
 
-  test('в один день дважды не спрашиваем', () => {
-    assert.ok(
-      !shouldAskWaist({
+  test('в один день дважды не беспокоим', () => {
+    assert.equal(
+      waistPrompt({
         localDate: '2026-08-12',
         lastWaistOn: null,
         waistAskedOn: '2026-08-12',
       }),
+      null,
+    );
+  });
+
+  test('предложение не повторяется каждый день', () => {
+    // Ритм один и для вопроса, и для предложения: человека беспокоят про
+    // обхваты раз в две недели, а не ежедневно, пока он не сдастся
+    assert.equal(
+      waistPrompt({
+        localDate: '2026-08-12',
+        lastWaistOn: null,
+        waistAskedOn: '2026-08-10',
+      }),
+      null,
+    );
+    assert.equal(
+      waistPrompt({
+        localDate: '2026-08-25',
+        lastWaistOn: null,
+        waistAskedOn: '2026-08-10',
+      }),
+      'offer',
     );
   });
 });
