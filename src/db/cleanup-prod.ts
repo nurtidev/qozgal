@@ -1,7 +1,16 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { db } from '@/db';
-import { users, foodEntries, foodItems } from '@/db/schema';
+import {
+  users,
+  foodEntries,
+  foodItems,
+  weightLogs,
+  bodyMeasurements,
+  workoutSessions,
+  workoutPlans,
+  injuries,
+} from '@/db/schema';
 
 /**
  * Чистка следов разработки перед пилотом.
@@ -16,6 +25,12 @@ import { users, foodEntries, foodItems } from '@/db/schema';
  *   npm run db:cleanup -- --yes            и записи, и пользователей
  *   npm run db:cleanup -- --yes --users    только пользователей от прогонов
  *   npm run db:cleanup -- --yes --entries  только записи за тестовую дату
+ *   npm run db:cleanup -- --yes --wipe-user=<telegram_id>
+ *
+ * Последний вариант удаляет одного человека целиком — со профилем, целями,
+ * дневником, весом, замерами и тренировками. Нужен, чтобы пройти путь нового
+ * пользователя от начала: онбординг видно только один раз, и проверить его
+ * иначе нельзя.
  *
  * Разделение появилось не для гибкости: записи за 07.08.2026 при ближайшем
  * рассмотрении оказались двумя одинаковыми ужинами на 1149 и 1191 ккал —
@@ -38,6 +53,15 @@ const RESET = '\x1b[0m';
 
 async function main() {
   const confirmed = process.argv.includes('--yes');
+
+  const wipeArg = process.argv
+    .find((arg) => arg.startsWith('--wipe-user='))
+    ?.slice('--wipe-user='.length);
+
+  if (wipeArg) {
+    await wipeUser(BigInt(wipeArg), confirmed);
+    return;
+  }
   const onlyUsers = process.argv.includes('--users');
   const onlyEntries = process.argv.includes('--entries');
   // Ни один флаг не указан — работаем с тем и другим, как раньше
@@ -153,6 +177,66 @@ async function main() {
   console.log(`Осталось пользователей: ${left?.count}`);
   console.log(
     `${DIM}Дневники остальных не тронуты: в проде есть живые записи, и они не наши.${RESET}`,
+  );
+}
+
+/**
+ * Полное удаление одного человека.
+ *
+ * Каскадом уходит всё: профиль, цели, дневник с позициями, вес, замеры,
+ * тренировки, подходы и программы. Это необратимо и потому печатает состав
+ * до удаления — если чисел на экране больше, чем человек ожидал, значит
+ * удаляется не то, что он думал.
+ */
+async function wipeUser(telegramId: bigint, confirmed: boolean): Promise<void> {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.telegramId, telegramId))
+    .limit(1);
+
+  if (!user) {
+    console.log(`Пользователь ${telegramId} не найден — нечего удалять.`);
+    return;
+  }
+
+  const counts = await Promise.all(
+    [
+      ['записей о еде', foodEntries, foodEntries.userId],
+      ['взвешиваний', weightLogs, weightLogs.userId],
+      ['замеров тела', bodyMeasurements, bodyMeasurements.userId],
+      ['тренировок', workoutSessions, workoutSessions.userId],
+      ['программ', workoutPlans, workoutPlans.userId],
+      ['ограничений', injuries, injuries.userId],
+    ].map(async ([label, table, column]) => {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)` })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from(table as any)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .where(eq(column as any, user.id));
+      return `${label}: ${row?.count ?? 0}`;
+    }),
+  );
+
+  console.log(
+    `\n${user.firstName ?? ''} @${user.username ?? '—'} (tg ${user.telegramId})`,
+  );
+  for (const line of counts) console.log(`  ${line}`);
+
+  if (!confirmed) {
+    console.log(
+      `\n${YELLOW}Ничего не удалено. Чтобы удалить целиком, добавьте --yes${RESET}`,
+    );
+    return;
+  }
+
+  await db.delete(users).where(eq(users.id, user.id));
+
+  const [left] = await db.select({ count: sql<number>`count(*)` }).from(users);
+  console.log(`\nУдалён. Осталось пользователей: ${left?.count}`);
+  console.log(
+    `${DIM}При следующем /start он создастся заново и пройдёт онбординг с нуля.${RESET}`,
   );
 }
 
