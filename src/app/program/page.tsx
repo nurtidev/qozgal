@@ -482,10 +482,12 @@ export default function ProgramPage() {
                             [area]: severity as InjurySeverity,
                           }))
                         }
+                        // Короткие подписи: в сегменте на три доли «врач
+                        // запретил» переносится на три строки
                         options={[
-                          { value: 'watch', label: ti('severities.watch') },
-                          { value: 'pain', label: ti('severities.pain') },
-                          { value: 'medical', label: ti('severities.medical') },
+                          { value: 'watch', label: ti('severitiesShort.watch') },
+                          { value: 'pain', label: ti('severitiesShort.pain') },
+                          { value: 'medical', label: ti('severitiesShort.medical') },
                         ]}
                       />
                     </div>
