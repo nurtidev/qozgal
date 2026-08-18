@@ -42,12 +42,14 @@ const STOP_WORDS = [
 const MODIFIER_WORDS = [
   // товарный вид и обработка
   'canned', 'frozen', 'fresh', 'chilled', 'refrigerated', 'bottled', 'packaged',
-  'reconstituted', 'instant', 'enriched', 'unenriched', 'fortified',
+  'reconstituted', 'enriched', 'unenriched', 'fortified',
   'pasteurized', 'sterilized', 'prepared', 'heated', 'reheated', 'purchased',
   // помол и нарезка
   'ground', 'chopped', 'sliced', 'diced', 'shredded', 'grated', 'crushed',
   'mashed', 'pureed', 'whole', 'half', 'halves', 'piece', 'pieces', 'cut',
   'flake', 'flakes',
+  // количество котлет или слоёв — уточнение, а не другой продукт
+  'single', 'double', 'triple',
   // части и очистка
   'peeled', 'unpeeled', 'skin', 'skinless', 'boneless', 'bone', 'bones',
   'cored', 'pitted', 'seedless', 'drained', 'undrained', 'solid', 'solids',
@@ -105,11 +107,21 @@ const PROCESSED_FORMS = [
   'dried', 'dehydrated', 'dry', 'powder', 'powdered', 'concentrate',
   'concentrated', 'evaporated', 'condensed', 'extract', 'flour', 'meal',
   'sweetened',
+  // «instant» у напитков означает порошок: растворимый чай — 345 ккал/100 г
+  // против единицы у заваренного
+  'instant',
   // готовые блюда
   'sandwich', 'burger', 'pizza', 'soup', 'sauce', 'gravy', 'salad', 'dressing',
   'casserole', 'entree', 'roll', 'wrap', 'nuggets', 'patty', 'sausage',
   // особое питание
   'babyfood', 'infant', 'formula', 'toddler', 'junior', 'strained',
+  /**
+   * Алкоголь. На «coffee» USDA отдавала `Alcoholic beverage, liqueur,
+   * coffee, 53 proof` — 336 ккал вместо двух у кофе, и до этого списка
+   * ликёр проходил как «кофе с уточнением».
+   */
+  'liqueur', 'alcoholic', 'wine', 'beer', 'vodka', 'whiskey', 'whisky',
+  'rum', 'brandy', 'gin', 'tequila', 'cocktail', 'liquor', 'ale', 'cider',
 ];
 
 /**
@@ -164,9 +176,22 @@ const PART_WORDS = [
 const CATEGORY_WORDS = [
   'beverages', 'beverage', 'fast', 'foods', 'food', 'restaurant', 'cereals',
   'cereal', 'spices', 'herbs', 'nuts', 'seeds', 'fish', 'shellfish',
-  'finfish', 'alcoholic', 'vegetables', 'fruits', 'legumes', 'poultry',
+  'finfish', 'vegetables', 'fruits', 'legumes', 'poultry',
   'luncheon', 'meats', 'meat', 'dairy', 'products', 'grains', 'pasta',
   'fats', 'oils', 'oil', 'school', 'lunch', 'entrees', 'meals',
+  /**
+   * «Roll» в номенклатуре булочек играет ту же роль, что «Beverages»
+   * у напитков: `Roll, white, hamburger bun` — это булочка для бургера,
+   * а не «рулет с булочкой». Без этого разложение бургера теряло булочку,
+   * а с ней и покрытие, при котором блюдо вообще считается.
+   */
+  'roll', 'rolls', 'bun', 'buns',
+  // «Soft drink, cola» — структура «категория, вид», как у булочек
+  'soft', 'drink', 'drinks',
+  // `Coffee, Latte`, `Tea, green` — структура «категория, вид»
+  'coffee', 'tea',
+  // `Beverages, carbonated, cola, regular` — способ подачи, не продукт
+  'carbonated',
 ];
 
 /* ─────────────────────────── Токенизация ──────────────────────────── */
@@ -303,6 +328,31 @@ const GENERIC_COOKED = new Set(['cooked', 'prepared', 'heated', 'reheated']);
  * Слова взяты из PROCESSED_FORMS: там они означают «другой продукт»,
  * если их нет в запросе, а здесь — «продукт уже приготовлен», если есть.
  */
+/**
+ * Составные блюда: их название целиком описывает готовое изделие, а описание
+ * в USDA перечисляет компоненты. Проверяются подстрокой, потому что
+ * «cheeseburger» и «hamburger» — одно слово каждое.
+ */
+const COMPOSED_DISHES = ['burger', 'sandwich', 'pizza', 'burrito', 'taco', 'hotdog', 'shawarma', 'doner'];
+
+/**
+ * Напитки — та же история, что с бургерами. В номенклатуре USDA они пишутся
+ * через «Soft drink», «Beverages, carbonated», и слово «drink» браковало их
+ * как «другую форму продукта»: на «cola» не находилось ничего, хотя
+ * `Soft drink, cola` — это она и есть. Когда запрос сам про напиток,
+ * проверка форм не нужна: жидкая форма и есть искомая.
+ */
+/** Слова жидкой формы: для напитка это и есть искомое, а не подмена */
+const LIQUID_FORMS = new Set(['drink', 'drinks', 'soda', 'beverage', 'beverages']);
+
+const DRINK_WORDS = new Set(
+  [
+    'cola', 'coffee', 'tea', 'latte', 'cappuccino', 'americano', 'espresso',
+    'lemonade', 'soda', 'kefir', 'ayran', 'kumys', 'shubat', 'compote',
+    'kvass', 'smoothie', 'juice', 'cocoa', 'milkshake',
+  ].map(singular),
+);
+
 const READY_FORMS = new Set(
   [
     'nuggets', 'fries', 'chips', 'pie', 'cake', 'cookie', 'cookies', 'wafer',
@@ -447,8 +497,13 @@ export function scoreCandidate(
   // не доходит, и совпадать там нечему.
   if (core.length === 0) return null;
 
+  /**
+   * Разделители — запятая и точка с запятой: в описаниях фастфуда USDA
+   * пишет `Fast foods, cheeseburger; double, large patty; with condiments`,
+   * и без точки с запятой «cheeseburger; double» читалось одним сегментом.
+   */
   const segments = describe(product)
-    .split(',')
+    .split(/[,;]/)
     .map(tokenize)
     .filter((tokens) => tokens.length > 0);
   if (segments.length === 0) return null;
@@ -463,28 +518,67 @@ export function scoreCandidate(
   const asked = new Set([...core, ...modifiers]);
 
   /**
+   * Запрос сам про готовое изделие — бургер, сэндвич, пиццу.
+   *
+   * Тогда проверка форм не применяется вовсе: описания таких блюд в USDA
+   * состоят из слов-компонентов, и правило «в описании есть форма, которой
+   * нет в запросе» браковало ровно то, что нужно. На «cheeseburger»
+   * отбраковывались все шестнадцать кандидатов из-за слова «patty», а на
+   * «hamburger bun» — `Roll, white, hamburger bun` из-за слова «roll».
+   * Котлета и булочка — части бургера, а не другой продукт.
+   *
+   * Совпадение по подстроке, а не по токену: «cheeseburger» одно слово,
+   * и «burger» внутри него токенизацией не выделяется.
+   */
+  const drink = core.some((token) => DRINK_WORDS.has(token));
+  const readyMade =
+    core.some((token) => READY_FORMS.has(token) || DRINK_WORDS.has(token)) ||
+    core.some((token) => COMPOSED_DISHES.some((form) => token.includes(form)));
+
+
+  /**
    * Продукт в другой форме — начинка пирога, сок, сухофрукт, детское
    * питание. Отбраковка, а не штраф: это не «хуже подходит», это не то.
+   *
+   * Для напитков послабление узкое: снимаются только слова жидкой формы
+   * («drink», «soda»), а концентраты — нет. Полное снятие проверки давало
+   * на «tea» растворимый чай в порошке: 345 ккал/100 г против единицы
+   * у заваренного, то есть ошибку в триста раз.
    */
-  if (descriptionTokens.some((t) => PROCESSED.has(t) && !asked.has(t))) {
-    return null;
-  }
+  const forbidden = descriptionTokens.some((token) => {
+    if (!PROCESSED.has(token) || asked.has(token)) return false;
+    if (readyMade && !drink) return false;
+    return !(drink && LIQUID_FORMS.has(token));
+  });
+
+  if (forbidden) return null;
 
   /**
    * Описание не про продукт, а про его часть: отдельный сегмент из одних
    * только «skin» или «seam fat». Оборот «with skin» под правило не
    * попадает — там кожура лишь уточняет, что яблоко нечищеное.
    */
-  const describesPart = segments.some((tokens) =>
-    tokens.some((token, index) => {
+  /**
+   * Сегменты с процентами и словом «lean» — это состав, а не часть туши:
+   * `Beef, ground, 80% lean meat / 20% fat, patty, cooked, broiled` —
+   * идеальная карточка котлеты, а правило про части браковало её из-за
+   * слова «fat». Жирность фарша в номенклатуре всегда пишется процентами.
+   */
+  const composition = /\d\s*%|\blean\b/i;
+  const rawSegments = describe(product).split(/[,;]/);
+
+  const describesPart = segments.some((tokens, segmentIndex) => {
+    if (composition.test(rawSegments[segmentIndex] ?? '')) return false;
+
+    return tokens.some((token, index) => {
       if (!PARTS.has(token) || asked.has(token)) return false;
       // Уточнение узнаётся по предлогу прямо перед словом: «with skin»,
       // «cooked in skin». Без предлога — «external fat», «skin» — это
       // и есть содержимое карточки.
       const before = index > 0 ? tokens[index - 1] : null;
       return before === null || !QUALIFYING_PREPOSITIONS.has(before);
-    }),
-  );
+    });
+  });
   if (describesPart) return null;
 
   /**
@@ -500,7 +594,17 @@ export function scoreCandidate(
   const prefixIsCategory = beforeHead.every((tokens) =>
     tokens.filter(isCore).every((t) => CATEGORIES.has(t)),
   );
-  if (!prefixIsCategory) return null;
+
+  /**
+   * Для готовых изделий требование к префиксу мягче.
+   *
+   * `Roll, white, hamburger bun` — булочка для бургера, но перед совпадением
+   * стоит сорт («white»), а не категория, и строгое правило её браковало.
+   * Из-за этого разложение бургера теряло булочку. Для обычных продуктов
+   * правило остаётся жёстким: на «whole milk» оно не даёт ответить
+   * `Cheese, mozzarella, whole milk` — молоко изделием не считается.
+   */
+  if (!prefixIsCategory && !(readyMade && !drink)) return null;
 
   let score: number = WEIGHTS.base;
 
@@ -582,13 +686,9 @@ export function scoreCandidate(
      * точное совпадение, хотя «unprepared» означает, что готовить его ещё
      * предстоит. На запрос о жареной картошке это ответ о замороженной.
      */
-    /**
-     * У готового изделия способ приготовления не спрашиваем: он уже
-     * в названии. Проверка на сырое при этом остаётся — «frozen, not
-     * reheated» это полуфабрикат, а не блюдо с тарелки.
-     */
-    const readyMade = core.some((token) => READY_FORMS.has(token));
-
+    // У готового изделия способ приготовления не спрашиваем: он уже
+    // в названии. Проверка на сырое при этом остаётся — «frozen, not
+    // reheated» это полуфабрикат, а не блюдо с тарелки.
     if (wanted !== 'raw' && raw && !generic) {
       score += WEIGHTS.stateConflict;
     } else if (wanted === 'raw' && cooked) {
@@ -669,6 +769,16 @@ export function scoreCandidate(
 const AMBIGUOUS_SCORE_GAP = 0.5;
 const AMBIGUOUS_KCAL_SPREAD = 0.6;
 
+/**
+ * Минимальная абсолютная разница, при которой расхождение вообще имеет смысл.
+ *
+ * У малокалорийного относительная разница огромна при ничтожной абсолютной:
+ * заваренный кофе 1 ккал/100 г против эспрессо 9 — это 89% расхождения
+ * и восемь килокалорий. Без этого порога приложение отказывалось считать
+ * кофе и колу, то есть самые частые позиции в дневнике.
+ */
+const AMBIGUOUS_KCAL_MIN = 25;
+
 export function pickBestMatch<T extends NewProduct>(
   input: MatchInput,
   candidates: T[],
@@ -692,10 +802,9 @@ export function pickBestMatch<T extends NewProduct>(
   const [best, runnerUp] = scored;
 
   if (runnerUp && best.score - runnerUp.score < AMBIGUOUS_SCORE_GAP) {
-    const spread =
-      Math.abs(best.product.kcalPer100g - runnerUp.product.kcalPer100g) /
-      Math.max(best.product.kcalPer100g, 1);
-    if (spread > AMBIGUOUS_KCAL_SPREAD) return null;
+    const diff = Math.abs(best.product.kcalPer100g - runnerUp.product.kcalPer100g);
+    const spread = diff / Math.max(best.product.kcalPer100g, 1);
+    if (spread > AMBIGUOUS_KCAL_SPREAD && diff > AMBIGUOUS_KCAL_MIN) return null;
   }
 
   return best.product;

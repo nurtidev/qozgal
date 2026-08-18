@@ -346,3 +346,92 @@ describe('Готовые изделия', () => {
     );
   });
 });
+
+/**
+ * Фастфуд — случай из живого дневника: «Бургер с двойной говядиной» на 280 г
+ * ушёл в день без калорий и без белка, потому что не нашлась ни карточка
+ * бургера, ни котлета для разложения на ингредиенты.
+ */
+describe('Составные блюда', () => {
+  test('жирность фарша — не «часть туши»', () => {
+    // `fat` в описании ловилось правилом про жир с туши, и лучшая карточка
+    // котлеты отбраковывалась. Проценты в сегменте означают состав
+    const patty = usda('Beef, ground, 80% lean meat / 20% fat, patty, cooked, broiled', {
+      kcalPer100g: 270,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'beef patty' }, [patty]), patty);
+  });
+
+  test('жир с туши по-прежнему отбраковывается', () => {
+    // Проверка, что послабление не стало дырой: у этой карточки процентов
+    // нет, и она остаётся жиром, а не мясом
+    const fat = usda('Lamb, Australian, imported, fresh, external fat, cooked', {
+      kcalPer100g: 554,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'lamb', preparation: 'boiled' }, [fat]), null);
+  });
+
+  test('компоненты бургера не считаются другим продуктом', () => {
+    // На «cheeseburger» отбраковывались все кандидаты из-за слова «patty»,
+    // хотя котлета — часть бургера, а не замена ему
+    const burger = usda('Fast foods, cheeseburger; single, regular patty; plain', {
+      kcalPer100g: 308,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'cheeseburger' }, [burger]), burger);
+  });
+
+  test('булочка для бургера находится', () => {
+    // `Roll` здесь категория, как `Beverages` у напитков
+    const bun = usda('Roll, white, hamburger bun', { kcalPer100g: 267 });
+    assert.equal(pickBestMatch({ nameEn: 'hamburger bun' }, [bun]), bun);
+  });
+
+  test('послабление для готовых блюд не распространяется на продукты', () => {
+    // Правило снимает проверку форм только когда запрос сам про изделие:
+    // «apple» изделием не является, и пирог ему не ответит
+    assert.equal(pickBestMatch({ nameEn: 'apple' }, [usda('Pie, apple')]), null);
+  });
+});
+
+/**
+ * Напитки — вторая половина случая из живого дневника: «Кола Зеро» и «Кофе
+ * с молоком» тоже ушли в день без калорий. В номенклатуре USDA они пишутся
+ * через «Soft drink» и «Beverages», и слово «drink» браковало их как другую
+ * форму продукта.
+ */
+describe('Напитки', () => {
+  test('жидкая форма не мешает найти напиток', () => {
+    const cola = usda('Soft drink, cola', { kcalPer100g: 42 });
+    assert.equal(pickBestMatch({ nameEn: 'cola' }, [cola]), cola);
+  });
+
+  test('растворимый порошок не отвечает на запрос про напиток', () => {
+    // 345 ккал/100 г против единицы у заваренного — ошибка в триста раз.
+    // Послабление для напитков снимает только жидкие формы, не концентраты
+    const instant = usda('Beverages, tea, instant, lemon, unsweetened', {
+      kcalPer100g: 345,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'tea' }, [instant]), null);
+  });
+
+  test('ликёр не отвечает на запрос про кофе', () => {
+    // 336 ккал вместо двух: пока алкоголь не попал в список форм, ликёр
+    // проходил как «кофе с уточнением»
+    const liqueur = usda('Alcoholic beverage, liqueur, coffee, 53 proof', {
+      kcalPer100g: 336,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'coffee' }, [liqueur]), null);
+  });
+
+  test('малая абсолютная разница отказа не вызывает', () => {
+    // Заваренный кофе 1 ккал против эспрессо 9 — это 89% расхождения
+    // и восемь килокалорий. Отказ здесь стоил бы дороже выбора
+    const brewed = usda('Beverages, coffee, brewed, prepared with tap water', {
+      kcalPer100g: 1,
+    });
+    const espresso = usda('Beverages, coffee, brewed, espresso, restaurant-prepared', {
+      kcalPer100g: 9,
+    });
+    assert.notEqual(pickBestMatch({ nameEn: 'coffee' }, [brewed, espresso]), null);
+  });
+});
