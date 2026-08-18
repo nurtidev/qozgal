@@ -131,6 +131,13 @@ export default function ProgramPage() {
   useTelegramBack(useCallback(() => router.replace('/workouts'), [router]));
 
   const [program, setProgram] = useState<Program | null | undefined>(undefined);
+  /**
+   * Есть ли физданные. Без них программу не собрать: уровень берётся
+   * из образа жизни, а диапазоны повторов — из цели по весу. Проверяем
+   * до первого вопроса, иначе человек проходит три шага и получает отказ
+   * на последнем — самый обидный способ узнать, что делать надо было другое.
+   */
+  const [needsProfile, setNeedsProfile] = useState(false);
   const [editing, setEditing] = useState(false);
   const [days, setDays] = useState('3');
   /**
@@ -153,6 +160,9 @@ export default function ProgramPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
+      const me = await api<{ needsOnboarding: boolean }>('/api/me');
+      setNeedsProfile(me.needsOnboarding);
+
       const data = await api<{ program: Program | null }>('/api/program');
       setProgram(data.program);
       if (data.program) {
@@ -298,12 +308,18 @@ export default function ProgramPage() {
   const lastStep = step === STEPS.length - 1;
 
   useMainButton({
-    text: showForm
-      ? lastStep
-        ? t('build')
-        : tc('next')
-      : t('start', { day: t('day', { index: nextDay?.dayIndex ?? 1 }) }),
+    text: needsProfile
+      ? t('fillProfile')
+      : showForm
+        ? lastStep
+          ? t('build')
+          : tc('next')
+        : t('start', { day: t('day', { index: nextDay?.dayIndex ?? 1 }) }),
     onClick: () => {
+      if (needsProfile) {
+        router.push('/onboarding');
+        return;
+      }
       if (!showForm) {
         if (nextDay) start(nextDay.id);
         return;
@@ -319,6 +335,17 @@ export default function ProgramPage() {
     return (
       <Screen>
         <ScreenSkeleton rows={3} />
+      </Screen>
+    );
+  }
+
+  if (needsProfile) {
+    return (
+      <Screen>
+        <h1 className="t-title">{t('title')}</h1>
+        <Card>
+          <Hint>{t('needsProfile')}</Hint>
+        </Card>
       </Screen>
     );
   }
