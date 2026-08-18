@@ -46,7 +46,16 @@ async function main() {
     .select({
       entries: sql<number>`count(distinct ${foodEntries.id})`,
       items: sql<number>`count(${foodItems.id})`,
-      missing: sql<number>`count(*) filter (where ${foodItems.productId} is null)`,
+      /**
+       * Пробел — это позиция без нутриентов, а не просто без ссылки
+       * на карточку. Ссылка обнуляется и когда карточку удаляют из кеша
+       * (`on delete set null`), а числа в позиции остаются: они хранятся
+       * снапшотом. После чистки пятнадцати карточек метрика без этого
+       * условия показала 39% вместо настоящих 6%.
+       */
+      missing: sql<number>`count(*) filter (
+        where ${foodItems.productId} is null and ${foodItems.kcal} = 0
+      )`,
       photo: sql<number>`count(distinct ${foodEntries.id}) filter (where ${foodEntries.source} = 'photo')`,
       text: sql<number>`count(distinct ${foodEntries.id}) filter (where ${foodEntries.source} = 'text')`,
       repeat: sql<number>`count(distinct ${foodEntries.id}) filter (where ${foodEntries.source} = 'repeat')`,
@@ -96,6 +105,7 @@ async function main() {
     .where(
       and(
         isNull(foodItems.productId),
+        eq(foodItems.kcal, 0),
         gte(foodEntries.createdAt, since),
       ),
     )
@@ -148,8 +158,12 @@ async function main() {
     .select({
       // Приведение к numeric обязательно: round(double precision, int)
       // в Postgres не существует, а avg(real) даёт именно double precision
-      missing: sql<number>`round((avg(${foodItems.aiConfidence}) filter (where ${foodItems.productId} is null))::numeric, 2)`,
-      found: sql<number>`round((avg(${foodItems.aiConfidence}) filter (where ${foodItems.productId} is not null))::numeric, 2)`,
+      missing: sql<number>`round((avg(${foodItems.aiConfidence}) filter (
+        where ${foodItems.productId} is null and ${foodItems.kcal} = 0
+      ))::numeric, 2)`,
+      found: sql<number>`round((avg(${foodItems.aiConfidence}) filter (
+        where ${foodItems.kcal} > 0
+      ))::numeric, 2)`,
     })
     .from(foodItems)
     .innerJoin(foodEntries, eq(foodEntries.id, foodItems.entryId))

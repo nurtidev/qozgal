@@ -13,7 +13,15 @@ import { users, foodEntries, foodItems } from '@/db/schema';
  *
  * Без флага только показывает, что будет удалено:
  *   npm run db:cleanup
- *   npm run db:cleanup -- --yes
+ *   npm run db:cleanup -- --yes            и записи, и пользователей
+ *   npm run db:cleanup -- --yes --users    только пользователей от прогонов
+ *   npm run db:cleanup -- --yes --entries  только записи за тестовую дату
+ *
+ * Разделение появилось не для гибкости: записи за 07.08.2026 при ближайшем
+ * рассмотрении оказались двумя одинаковыми ужинами на 1149 и 1191 ккал —
+ * то есть настоящей едой, задублированной при проверке. Пользователи
+ * от прогонов — мусор без сомнений, а такие записи стоит показать хозяину
+ * дневника, прежде чем удалять.
  *
  * Тестовые пользователи вернутся при следующем прогоне e2e против прода —
  * это нормально, они создаются сами. Смысл чистки не в том, чтобы их
@@ -30,6 +38,11 @@ const RESET = '\x1b[0m';
 
 async function main() {
   const confirmed = process.argv.includes('--yes');
+  const onlyUsers = process.argv.includes('--users');
+  const onlyEntries = process.argv.includes('--entries');
+  // Ни один флаг не указан — работаем с тем и другим, как раньше
+  const withEntries = !onlyUsers || onlyEntries;
+  const withUsers = !onlyEntries || onlyUsers;
 
   const [owner] = await db
     .select()
@@ -37,16 +50,9 @@ async function main() {
     .where(eq(users.telegramId, OWNER_TG))
     .limit(1);
 
-  const doomed = owner
+  const entries = owner
     ? await db
-        .select({
-          id: foodEntries.id,
-          meal: foodEntries.mealType,
-          kcal: sql<number>`(
-            select round(coalesce(sum(${foodItems.kcal}), 0)::numeric)
-            from ${foodItems} where ${foodItems.entryId} = ${foodEntries.id}
-          )`,
-        })
+        .select({ id: foodEntries.id, meal: foodEntries.mealType })
         .from(foodEntries)
         .where(
           and(
@@ -56,9 +62,47 @@ async function main() {
         )
     : [];
 
+  /**
+   * Калорийность считается отдельным запросом с группировкой, а не
+   * коррелированным подзапросом внутри select: тот молча возвращал ноль,
+   * и записи с настоящим ужином на 1149 ккал выглядели пустыми. Скрипт,
+   * который перед необратимым удалением показывает не те числа, опаснее
+   * отсутствия скрипта: человек согласится, не задумываясь.
+   */
+  const sums = new Map<string, { kcal: number; items: number }>();
+
+  if (entries.length > 0) {
+    const rows = await db
+      .select({
+        entryId: foodItems.entryId,
+        kcal: sql<number>`round(coalesce(sum(${foodItems.kcal}), 0)::numeric)`,
+        items: sql<number>`count(*)`,
+      })
+      .from(foodItems)
+      .where(
+        inArray(
+          foodItems.entryId,
+          entries.map((entry) => entry.id),
+        ),
+      )
+      .groupBy(foodItems.entryId);
+
+    for (const row of rows) {
+      sums.set(row.entryId, { kcal: Number(row.kcal), items: Number(row.items) });
+    }
+  }
+
+  const doomed = entries.map((entry) => ({
+    ...entry,
+    kcal: sums.get(entry.id)?.kcal ?? 0,
+    items: sums.get(entry.id)?.items ?? 0,
+  }));
+
   console.log(`\nЗаписи владельца за ${TEST_DATE}: ${doomed.length}`);
   for (const entry of doomed) {
-    console.log(`  ${entry.meal} — ${entry.kcal} ккал  ${DIM}${entry.id}${RESET}`);
+    console.log(
+      `  ${entry.meal} — позиций ${entry.items}, ${entry.kcal} ккал  ${DIM}${entry.id}${RESET}`,
+    );
   }
 
   const test = await db
@@ -80,7 +124,7 @@ async function main() {
     return;
   }
 
-  if (doomed.length > 0) {
+  if (withEntries && doomed.length > 0) {
     await db.delete(foodEntries).where(
       inArray(
         foodEntries.id,
@@ -89,7 +133,7 @@ async function main() {
     );
   }
 
-  if (test.length > 0) {
+  if (withUsers && test.length > 0) {
     // Каскадом уйдут их профили, цели, записи и тренировки — на них
     // никто больше не ссылается
     await db.delete(users).where(
@@ -103,7 +147,8 @@ async function main() {
   const [left] = await db.select({ count: sql<number>`count(*)` }).from(users);
 
   console.log(
-    `\nУдалено: записей ${doomed.length}, пользователей ${test.length}.`,
+    `\nУдалено: записей ${withEntries ? doomed.length : 0}, ` +
+      `пользователей ${withUsers ? test.length : 0}.`,
   );
   console.log(`Осталось пользователей: ${left?.count}`);
   console.log(
