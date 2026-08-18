@@ -54,6 +54,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
+    "telegram": "^2.26.22",
     "typescript": "^5"
   }
 }
