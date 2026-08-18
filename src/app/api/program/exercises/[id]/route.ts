@@ -11,9 +11,16 @@ import {
 } from '@/db/schema';
 import { toLocale } from '@/i18n/messages';
 import { conflictsFor } from '@/lib/health/injury';
-import { nextAlternative, type MovementPattern, type Place } from '@/lib/health/program';
+import { nextAlternative, type MovementPattern } from '@/lib/health/program';
 
 type Params = { id: string };
+
+/** Что считать доступным у планов, собранных до появления списка инвентаря */
+function equipmentFromPlace(place: string): string[] {
+  return place === 'gym'
+    ? ['штанга', 'тренажёр', 'гантели', 'брусья', 'турник', 'скакалка']
+    : ['гантели', 'турник', 'скакалка'];
+}
 
 /**
  * Замена одного упражнения в программе на следующее того же паттерна.
@@ -40,6 +47,7 @@ export const POST = route<Params>(async ({ session, params, t }) => {
       pattern: planExercises.pattern,
       dayId: planDays.id,
       place: workoutPlans.place,
+      equipment: workoutPlans.equipment,
     })
     .from(planExercises)
     .innerJoin(planDays, eq(planDays.id, planExercises.dayId))
@@ -91,7 +99,9 @@ export const POST = route<Params>(async ({ session, params, t }) => {
     pattern: slot.pattern as MovementPattern,
     currentId: slot.exerciseId,
     exercises: catalog,
-    place: slot.place as Place,
+    // У планов, собранных до появления списка инвентаря, его нет —
+    // разворачиваем из места занятий, иначе замена ничего не найдёт
+    equipment: slot.equipment ?? equipmentFromPlace(slot.place),
     injuries: active,
     takenIds: siblings.map((s) => s.exerciseId),
   });

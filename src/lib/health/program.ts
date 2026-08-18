@@ -63,8 +63,50 @@ export type DayFocus =
   | 'upper_b'
   | 'lower_b';
 
-/** Где занимается человек — от этого зависит доступный инвентарь */
-export type Place = 'gym' | 'home';
+/**
+ * Инвентарь, который у человека есть.
+ *
+ * Раньше это был один переключатель «зал или дом», и он врал в обе стороны:
+ * дома у одного гантели и турник, у другого коврик, а в «зале» подвала
+ * многоквартирного дома может не быть тренажёров. Программа при этом
+ * собиралась по усреднённому списку, и домашние планы выходили одинаковыми
+ * у всех.
+ */
+export type Equipment =
+  | 'штанга'
+  | 'тренажёр'
+  | 'гантели'
+  | 'брусья'
+  | 'турник'
+  | 'скакалка'
+  | 'без инвентаря';
+
+/**
+ * Порядок предпочтения при равных прочих: базовое движение лучше делать
+ * со штангой, а не с гантелями. Заодно задаёт стабильность подбора —
+ * при одинаковом входе выбор не меняется.
+ */
+const EQUIPMENT_PRIORITY: Equipment[] = [
+  'штанга',
+  'тренажёр',
+  'гантели',
+  'брусья',
+  'турник',
+  'скакалка',
+  'без инвентаря',
+];
+
+/**
+ * Собственный вес доступен всегда.
+ *
+ * Даже если человек отметил только штангу, отжимания и планку он сделать
+ * может — а без этой оговорки программа теряла бы кор и часть изоляции
+ * у того, кто просто не подумал отметить «без инвентаря».
+ */
+export function allowedEquipment(chosen: readonly string[]): string[] {
+  const set = new Set<string>([...chosen, 'без инвентаря']);
+  return EQUIPMENT_PRIORITY.filter((item) => set.has(item));
+}
 
 /**
  * Опыт. Берётся не отдельным вопросом, а из активности профиля: человек
@@ -123,7 +165,8 @@ export interface Program {
 
 export interface ProgramInput {
   daysPerWeek: number;
-  place: Place;
+  /** Что есть из инвентаря; собственный вес добавляется сам */
+  equipment: readonly string[];
   goal: ProgramGoal;
   level: Level;
   exercises: ExerciseCard[];
@@ -185,16 +228,6 @@ const DAY_SLOTS: Record<DayFocus, MovementPattern[]> = {
 
 /** Сколько упражнений в дне. Новичку короче: важнее прийти во второй раз */
 const SLOTS_PER_DAY: Record<Level, number> = { novice: 4, regular: 6 };
-
-/**
- * Инвентарь по месту занятий. Порядок задаёт и допустимость, и предпочтение:
- * в зале базовое движение лучше делать со штангой, дома выбор всё равно
- * между гантелями и собственным весом.
- */
-const EQUIPMENT_BY_PLACE: Record<Place, string[]> = {
-  gym: ['штанга', 'тренажёр', 'гантели', 'брусья', 'турник', 'скакалка', 'без инвентаря'],
-  home: ['гантели', 'без инвентаря', 'турник', 'скакалка'],
-};
 
 type Role = 'base' | 'accessory' | 'core' | 'cardio';
 
@@ -260,7 +293,7 @@ const MAX_DAYS = 6;
 export function buildProgram(input: ProgramInput): Program {
   const daysPerWeek = Math.min(Math.max(input.daysPerWeek, MIN_DAYS), MAX_DAYS);
   const focuses = SPLITS[daysPerWeek][input.level];
-  const allowed = EQUIPMENT_BY_PLACE[input.place];
+  const allowed = allowedEquipment(input.equipment);
 
   /**
    * Сколько раз упражнение уже занято в программе. Нужно, чтобы шесть дней
@@ -411,7 +444,7 @@ export interface AlternativeInput {
   /** Что стоит в слоте сейчас — от него отсчитывается «следующее» */
   currentId: string;
   exercises: ExerciseCard[];
-  place: Place;
+  equipment: readonly string[];
   injuries: ActiveInjury[];
   /** Что уже стоит в этом же дне: одно движение дважды — не программа */
   takenIds: string[];
@@ -444,7 +477,7 @@ export interface Alternative {
  * @returns следующий вариант или null, если выбора нет
  */
 export function nextAlternative(input: AlternativeInput): Alternative | null {
-  const allowed = EQUIPMENT_BY_PLACE[input.place];
+  const allowed = allowedEquipment(input.equipment);
 
   const available = input.exercises.filter(
     (e) =>

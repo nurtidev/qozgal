@@ -375,7 +375,7 @@ async function seedProgram(userId: string) {
 
   const program = buildProgram({
     daysPerWeek: 4,
-    place: 'gym',
+    equipment: ['штанга', 'тренажёр', 'гантели', 'брусья', 'турник', 'скакалка'],
     goal: 'lose',
     level: 'regular',
     exercises: catalog,
@@ -388,7 +388,7 @@ async function seedProgram(userId: string) {
       userId,
       title: `Программа на ${program.daysPerWeek} дн/нед`,
       daysPerWeek: program.daysPerWeek,
-      place: 'gym',
+      equipment: ['штанга', 'тренажёр', 'гантели', 'брусья', 'турник', 'скакалка'],
       goalType: 'lose',
       level: 'regular',
       skipped: program.skipped,

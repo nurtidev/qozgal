@@ -23,7 +23,7 @@ import {
   ErrorNote,
 } from '@/components/ui';
 import type { BodyArea, InjurySeverity } from '@/lib/health/injury';
-import type { DayFocus, MovementPattern, Place } from '@/lib/health/program';
+import type { DayFocus, MovementPattern } from '@/lib/health/program';
 
 interface Conflict {
   area: BodyArea;
@@ -68,13 +68,47 @@ interface Skipped {
 interface Program {
   id: string;
   daysPerWeek: number;
-  place: Place;
+  equipment: string[];
   nextDayIndex: number;
   days: PlanDay[];
   skipped: Skipped[];
 }
 
 const DAY_CHOICES = ['2', '3', '4', '5', '6'];
+
+/**
+ * Инвентарь списком, а не переключателем «зал или дом».
+ *
+ * Тот врал в обе стороны: дома у одного гантели и турник, у другого коврик,
+ * и домашние программы выходили одинаковыми у всех. Порядок — от того, что
+ * решает больше всего, к тому, что решает меньше.
+ */
+const EQUIPMENT_CHOICES = [
+  'штанга',
+  'тренажёр',
+  'гантели',
+  'турник',
+  'брусья',
+  'скакалка',
+] as const;
+
+/** Пресеты: шесть касаний превращаются в одно */
+const GYM_PRESET = ['штанга', 'тренажёр', 'гантели', 'турник', 'брусья', 'скакалка'];
+const HOME_PRESET = ['гантели', 'турник'];
+
+/** Области тела для быстрой отметки ограничений */
+const AREA_CHOICES: BodyArea[] = [
+  'lower_back',
+  'knee',
+  'shoulder',
+  'neck',
+  'elbow',
+  'wrist',
+  'hip',
+  'ankle',
+];
+
+const STEPS = ['days', 'equipment', 'limits'] as const;
 
 /**
  * Программа тренировок.
@@ -99,7 +133,17 @@ export default function ProgramPage() {
   const [program, setProgram] = useState<Program | null | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [days, setDays] = useState('3');
-  const [place, setPlace] = useState<Place>('gym');
+  /**
+   * Онбординг из трёх коротких шагов вместо одной формы.
+   *
+   * Форма со всеми вопросами сразу читается как анкета, а анкету закрывают.
+   * Один вопрос на экран, ответы кнопками, ничего не нужно печатать —
+   * человек проходит его за три касания, а не за пять минут раздумий.
+   */
+  const [step, setStep] = useState(0);
+  const [equipment, setEquipment] = useState<string[]>([...GYM_PRESET]);
+  /** Что беспокоит: область → степень. Пустой набор — здоров */
+  const [complaints, setComplaints] = useState<Record<string, InjurySeverity>>({});
   const [busy, setBusy] = useState(false);
   /** id заменяемого упражнения — блокируем только его строку, а не экран */
   const [swapping, setSwapping] = useState<string | null>(null);
@@ -113,7 +157,9 @@ export default function ProgramPage() {
       setProgram(data.program);
       if (data.program) {
         setDays(String(data.program.daysPerWeek));
-        setPlace(data.program.place);
+        // У планов, собранных до появления списка, инвентаря нет —
+        // тогда оставляем предложенный по умолчанию
+        if (data.program.equipment?.length) setEquipment(data.program.equipment);
       }
     } catch (e) {
       setProgram(null);
@@ -135,12 +181,26 @@ export default function ProgramPage() {
     setBusy(true);
     setError(null);
     try {
+      /**
+       * Отмеченные жалобы заводятся ограничениями до сборки, а не после:
+       * подбор читает их из журнала, и если записать после, первая программа
+       * соберётся без учёта того, что человек только что сказал.
+       */
+      for (const [area, severity] of Object.entries(complaints)) {
+        await api('/api/injuries', {
+          method: 'POST',
+          body: JSON.stringify({ area, severity }),
+        });
+      }
+
       await api('/api/program', {
         method: 'POST',
-        body: JSON.stringify({ daysPerWeek: Number(days), place }),
+        body: JSON.stringify({ daysPerWeek: Number(days), equipment }),
       });
       haptic('success');
       setEditing(false);
+      setStep(0);
+      setComplaints({});
       await load();
     } catch (e) {
       haptic('error');
@@ -148,6 +208,35 @@ export default function ProgramPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Инвентарь: отметка снимается повторным нажатием */
+  function toggleEquipment(item: string) {
+    haptic('tap');
+    setEquipment((current) =>
+      current.includes(item)
+        ? current.filter((value) => value !== item)
+        : [...current, item],
+    );
+  }
+
+  /**
+   * Жалоба на область.
+   *
+   * Первое нажатие ставит «беспокоит» — самую мягкую степень: человек,
+   * который просто отметил колено, не имел в виду врачебный запрет.
+   * Дальше степень уточняется отдельным выбором.
+   */
+  function toggleComplaint(area: BodyArea) {
+    haptic('tap');
+    setComplaints((current) => {
+      if (area in current) {
+        const next = { ...current };
+        delete next[area];
+        return next;
+      }
+      return { ...current, [area]: 'watch' };
+    });
   }
 
   async function start(dayId: string) {
@@ -206,11 +295,22 @@ export default function ProgramPage() {
   const nextDay = program?.days.find((d) => d.dayIndex === program.nextDayIndex);
   const showForm = editing || program === null;
 
+  const lastStep = step === STEPS.length - 1;
+
   useMainButton({
     text: showForm
-      ? t('build')
+      ? lastStep
+        ? t('build')
+        : tc('next')
       : t('start', { day: t('day', { index: nextDay?.dayIndex ?? 1 }) }),
-    onClick: () => (showForm ? build() : nextDay && start(nextDay.id)),
+    onClick: () => {
+      if (!showForm) {
+        if (nextDay) start(nextDay.id);
+        return;
+      }
+      if (lastStep) build();
+      else setStep(step + 1);
+    },
     visible: program !== undefined,
     loading: busy,
   });
@@ -226,51 +326,169 @@ export default function ProgramPage() {
   if (showForm) {
     return (
       <Screen>
-        <h1 className="t-title">{t('title')}</h1>
+        {/* Полоска шагов: человек видит, что вопросов три, а не бесконечно */}
+        <div className="flex gap-1.5">
+          {STEPS.map((_, index) => (
+            <span
+              key={index}
+              className={`h-1 flex-1 rounded-full ${
+                index <= step
+                  ? 'bg-[var(--tg-theme-button-color)]'
+                  : 'bg-[var(--tg-theme-secondary-bg-color)]'
+              }`}
+            />
+          ))}
+        </div>
 
-        {program === null && (
-          <Card>
-            <Hint>{t('empty')}</Hint>
-          </Card>
+        <h1 className="t-title">{t(`steps.${STEPS[step]}`)}</h1>
+
+        {step === 0 && (
+          <>
+            <Card className="flex flex-col gap-3">
+              <Segmented
+                value={days}
+                onChange={setDays}
+                options={DAY_CHOICES.map((value) => ({ value, label: value }))}
+              />
+              <Hint>{t('days', { count: Number(days) })}</Hint>
+            </Card>
+            <Hint>{t('daysHint')}</Hint>
+          </>
         )}
 
-        <Card className="flex flex-col gap-3">
-          <span className="t-caption">
-            {t('daysQuestion')}
-          </span>
-          <Segmented
-            value={days}
-            onChange={setDays}
-            options={DAY_CHOICES.map((value) => ({ value, label: value }))}
-          />
-          <Hint>{t('days', { count: Number(days) })}</Hint>
-        </Card>
+        {step === 1 && (
+          <>
+            {/* Пресеты первыми: шесть отметок превращаются в одну.
+                Большинство отвечает «полный зал» или «дома с гантелями»,
+                и заставлять их отмечать по одному — лишняя работа */}
+            <div className="flex gap-2">
+              <Button
+                variant={
+                  equipment.length === GYM_PRESET.length ? 'primary' : 'ghost'
+                }
+                onClick={() => {
+                  haptic('tap');
+                  setEquipment([...GYM_PRESET]);
+                }}
+              >
+                {t('presets.gym')}
+              </Button>
+              <Button
+                variant={
+                  equipment.length === HOME_PRESET.length &&
+                  HOME_PRESET.every((item) => equipment.includes(item))
+                    ? 'primary'
+                    : 'ghost'
+                }
+                onClick={() => {
+                  haptic('tap');
+                  setEquipment([...HOME_PRESET]);
+                }}
+              >
+                {t('presets.home')}
+              </Button>
+            </div>
 
-        <Card className="flex flex-col gap-3">
-          <span className="t-caption">
-            {t('placeQuestion')}
-          </span>
-          <RadioList
-            value={place}
-            onChange={setPlace}
-            options={[
-              { value: 'gym' as const, label: t('places.gym'), hint: t('places.gymHint') },
-              { value: 'home' as const, label: t('places.home'), hint: t('places.homeHint') },
-            ]}
-          />
-        </Card>
+            <Card className="flex flex-col">
+              {EQUIPMENT_CHOICES.map((item, index) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => toggleEquipment(item)}
+                  className={`flex min-h-11 items-center justify-between gap-3 text-left ${
+                    index < EQUIPMENT_CHOICES.length - 1
+                      ? 'border-b border-[var(--tg-theme-hint-color)]/15'
+                      : ''
+                  }`}
+                >
+                  <span className="t-body">{t(`equipment.${item}` as 'equipment.гантели')}</span>
+                  <span className="t-caption shrink-0">
+                    {equipment.includes(item) ? '✓' : ''}
+                  </span>
+                </button>
+              ))}
+            </Card>
+
+            {/* Своё тело не спрашиваем: отжимания и планка доступны всегда,
+                и лишний пункт «без инвентаря» только запутывал бы */}
+            <Hint>
+              {equipment.length === 0 ? t('equipmentNone') : t('equipmentHint')}
+            </Hint>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <Card className="flex flex-col">
+              {AREA_CHOICES.map((area, index) => (
+                <div
+                  key={area}
+                  className={
+                    index < AREA_CHOICES.length - 1
+                      ? 'border-b border-[var(--tg-theme-hint-color)]/15'
+                      : ''
+                  }
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleComplaint(area)}
+                    className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+                  >
+                    <span className="t-body">
+                      {ti(`areas.${area}` as 'areas.knee')}
+                    </span>
+                    <span className="t-caption shrink-0">
+                      {area in complaints ? '✓' : ''}
+                    </span>
+                  </button>
+
+                  {/* Степень спрашиваем только у отмеченного: показывать три
+                      варианта у каждой из восьми областей значит превратить
+                      шаг в таблицу из двадцати четырёх кнопок */}
+                  {area in complaints && (
+                    <div className="pb-3">
+                      <Segmented
+                        value={complaints[area]}
+                        onChange={(severity) =>
+                          setComplaints((current) => ({
+                            ...current,
+                            [area]: severity as InjurySeverity,
+                          }))
+                        }
+                        options={[
+                          { value: 'watch', label: ti('severities.watch') },
+                          { value: 'pain', label: ti('severities.pain') },
+                          { value: 'medical', label: ti('severities.medical') },
+                        ]}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Card>
+
+            <Hint>
+              {Object.keys(complaints).length === 0
+                ? t('limitsNone')
+                : t('limitsHint')}
+            </Hint>
+          </>
+        )}
 
         {error && <ErrorNote>{error}</ErrorNote>}
 
-        <Hint>{t('sourceHint')}</Hint>
-
-        {program !== null && (
-          <div className="mt-auto pt-4">
+        <div className="mt-auto flex flex-col gap-2 pt-4">
+          {step > 0 && (
+            <Button variant="ghost" onClick={() => setStep(step - 1)}>
+              {tc('back')}
+            </Button>
+          )}
+          {step === 0 && program !== null && (
             <Button variant="ghost" onClick={() => setEditing(false)}>
               {tc('back')}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </Screen>
     );
   }
@@ -307,7 +525,15 @@ export default function ProgramPage() {
         <span className="text-base">
           {t('summary', {
             days: t('days', { count: program.daysPerWeek }),
-            place: t(`places.${program.place}`),
+            // Инвентарь перечисляем словами: «в зале» ничего не говорило
+            // о том, с чем именно собрана программа
+            place:
+              program.equipment.length > 0
+                ? program.equipment
+                    .map((item) => t(`equipment.${item}` as 'equipment.гантели'))
+                    .join(', ')
+                    .toLowerCase()
+                : t('equipmentBodyweight'),
           })}
         </span>
       </Card>

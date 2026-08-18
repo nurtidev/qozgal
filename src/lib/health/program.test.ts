@@ -22,6 +22,10 @@ import { EXERCISES } from '@/db/seed-data/exercises';
  * только код подбора.
  */
 
+/** Типичные наборы инвентаря: полный зал и домашний минимум */
+const GYM = ['штанга', 'тренажёр', 'гантели', 'брусья', 'турник', 'скакалка'];
+const HOME = ['гантели', 'турник'];
+
 /** Карточки справочника с подставленными идентификаторами */
 const CATALOG: ExerciseCard[] = EXERCISES.map((e) => ({
   id: e.nameRu,
@@ -34,7 +38,7 @@ const CATALOG: ExerciseCard[] = EXERCISES.map((e) => ({
 function input(overrides: Partial<ProgramInput> = {}): ProgramInput {
   return {
     daysPerWeek: 3,
-    place: 'gym',
+    equipment: GYM,
     goal: 'maintain',
     level: 'regular',
     exercises: CATALOG,
@@ -193,7 +197,7 @@ describe('Программа тренировок', () => {
 
   test('дома не появляется штанга и тренажёры', () => {
     const home = new Set(['гантели', 'без инвентаря', 'турник', 'скакалка']);
-    const program = buildProgram(input({ daysPerWeek: 4, place: 'home' }));
+    const program = buildProgram(input({ daysPerWeek: 4, equipment: HOME }));
 
     const picked = flat(program);
     assert.ok(picked.length > 0);
@@ -290,7 +294,7 @@ describe('Замена упражнения', () => {
       pattern: 'h_push',
       currentId: 'Жим лёжа',
       exercises: CATALOG,
-      place: 'gym',
+      equipment: GYM,
       injuries: [],
       takenIds: [],
       ...overrides,
@@ -338,7 +342,7 @@ describe('Замена упражнения', () => {
 
   test('дома не предлагает штангу', () => {
     const next = nextAlternative(
-      swap({ place: 'home', currentId: 'Отжимания от пола' }),
+      swap({ equipment: HOME, currentId: 'Отжимания от пола' }),
     );
     assert.ok(next);
     assert.notEqual(card(next.exerciseId).equipment, 'штанга');
@@ -385,7 +389,7 @@ describe('Замена упражнения', () => {
     // из шестнадцати дома, и заметно это стало только замером
     const patterns = [...new Set(CATALOG.map((e) => e.pattern).filter(Boolean))];
 
-    for (const place of ['gym', 'home'] as const) {
+    for (const equipment of [GYM, HOME]) {
       for (const pattern of patterns) {
         if (pattern === 'cardio') continue;
 
@@ -396,12 +400,12 @@ describe('Замена упражнения', () => {
           swap({
             pattern: pattern as AlternativeInput['pattern'],
             currentId: current.id,
-            place,
+            equipment,
           }),
         );
         assert.ok(
           next,
-          `${pattern} в режиме «${place}» нечем заменить — нужен ещё вариант в справочнике`,
+          `${pattern} с инвентарём «${equipment.join(', ')}» нечем заменить — нужен ещё вариант в справочнике`,
         );
       }
     }

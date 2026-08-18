@@ -96,6 +96,7 @@ export const GET = route(async ({ session }) => {
       id: plan.id,
       daysPerWeek: plan.daysPerWeek,
       place: plan.place,
+      equipment: plan.equipment ?? [],
       goalType: plan.goalType,
       level: plan.level,
       startsOn: plan.startsOn,
@@ -252,9 +253,24 @@ async function progressionAdvice(
 
 /* ─────────────────────────── Сборка программы ──────────────────────── */
 
+const EQUIPMENT = [
+  'штанга',
+  'тренажёр',
+  'гантели',
+  'брусья',
+  'турник',
+  'скакалка',
+  'без инвентаря',
+] as const;
+
 const postSchema = z.object({
   daysPerWeek: z.number().int().min(2).max(6),
-  place: z.enum(['gym', 'home']),
+  /**
+   * Что есть из инвентаря. Пустой список допустим и означает «только
+   * собственный вес»: подбор всё равно добавляет его сам, и отказывать
+   * человеку, у которого нет ничего, незачем.
+   */
+  equipment: z.array(z.enum(EQUIPMENT)).max(EQUIPMENT.length),
 });
 
 export const POST = route(async ({ session, request, t }) => {
@@ -291,7 +307,7 @@ export const POST = route(async ({ session, request, t }) => {
   const level = levelFromActivity(profile.activityLevel);
   const program = buildProgram({
     daysPerWeek: body.daysPerWeek,
-    place: body.place,
+    equipment: body.equipment,
     // Цель на момент сборки: сменив её, человек пересоберёт программу —
     // подходы и повторы зависят от того, набирает он или снижает вес
     goal: goal?.type ?? 'maintain',
@@ -319,7 +335,12 @@ export const POST = route(async ({ session, request, t }) => {
         // бы русскую строку, записанную при сборке
         title: `Программа на ${program.daysPerWeek} дн/нед`,
         daysPerWeek: program.daysPerWeek,
-        place: body.place,
+        // place пишется для совместимости с планами, собранными раньше:
+        // отличить «зал» от «дома» можно по наличию штанги или тренажёров
+        place: body.equipment.some((e) => e === 'штанга' || e === 'тренажёр')
+          ? 'gym'
+          : 'home',
+        equipment: body.equipment,
         goalType: goal?.type ?? null,
         level,
         skipped: program.skipped,

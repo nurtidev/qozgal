@@ -50,6 +50,13 @@
       "when": 1786994722688,
       "tag": "0006_striped_tyrannus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787059415249,
+      "tag": "0007_classy_pride",
+      "breakpoints": true
     }
   ]
 }

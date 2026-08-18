@@ -452,6 +452,9 @@ describe('Травмы и ограничения', () => {
 });
 
 describe('Программа тренировок', () => {
+  /** Полный зал: всё, что есть в справочнике, кроме собственного веса */
+  const GYM_EQUIPMENT = ['штанга', 'тренажёр', 'гантели', 'турник', 'брусья', 'скакалка'];
+
   interface PlannedExercise {
     id: string;
     advice: { kind: string; deltaKg: number | null } | null;
@@ -479,7 +482,7 @@ describe('Программа тренировок', () => {
   }
 
   test('программа собирается и повторяется в точности', async () => {
-    const body = JSON.stringify({ daysPerWeek: 4, place: 'gym' });
+    const body = JSON.stringify({ daysPerWeek: 4, equipment: GYM_EQUIPMENT });
     const built = await call('/api/program', ALICE, { method: 'POST', body });
     assert.equal(built.status, 200);
 
@@ -504,7 +507,7 @@ describe('Программа тренировок', () => {
 
     await call('/api/program', ALICE, {
       method: 'POST',
-      body: JSON.stringify({ daysPerWeek: 3, place: 'gym' }),
+      body: JSON.stringify({ daysPerWeek: 3, equipment: GYM_EQUIPMENT }),
     });
 
     const plan = await program();
@@ -530,7 +533,7 @@ describe('Программа тренировок', () => {
   test('тренировка по плану знает, что сегодня делать', async () => {
     await call('/api/program', ALICE, {
       method: 'POST',
-      body: JSON.stringify({ daysPerWeek: 3, place: 'home' }),
+      body: JSON.stringify({ daysPerWeek: 3, equipment: ['гантели', 'турник'] }),
     });
     const plan = await program();
     const day = plan.days[0];
@@ -588,21 +591,46 @@ describe('Программа тренировок', () => {
   test('невозможные параметры сборки отвергаются', async () => {
     const oneDay = await call('/api/program', ALICE, {
       method: 'POST',
-      body: JSON.stringify({ daysPerWeek: 1, place: 'gym' }),
+      body: JSON.stringify({ daysPerWeek: 1, equipment: GYM_EQUIPMENT }),
     });
     assert.equal(oneDay.status, 422);
 
     const nowhere = await call('/api/program', ALICE, {
       method: 'POST',
-      body: JSON.stringify({ daysPerWeek: 3, place: 'улица' }),
+      body: JSON.stringify({ daysPerWeek: 3, equipment: ['батут'] }),
     });
     assert.equal(nowhere.status, 422);
+  });
+
+  test('программа собирается под отмеченный инвентарь', async () => {
+    // Раньше это был переключатель «зал или дом», и домашние программы
+    // выходили одинаковыми у всех: у одного гантели и турник, у другого
+    // коврик, а список инвентаря был усреднённым
+    await call('/api/program', ALICE, {
+      method: 'POST',
+      body: JSON.stringify({ daysPerWeek: 3, equipment: ['гантели'] }),
+    });
+
+    const plan = await program();
+    const names = plan.days.flatMap((d) => d.exercises.map((e) => e.name));
+
+    assert.ok(names.length > 0);
+    assert.ok(
+      !names.some((name) => /штанг|блок|тренажёр/i.test(name)),
+      `в программе на гантелях не должно быть зала: ${names.join(', ')}`,
+    );
+
+    // Собственный вес доступен всегда, даже если его не отмечали
+    assert.ok(
+      names.some((name) => /планка|отжимания|скручивания|подъём ног/i.test(name)),
+      'упражнения с собственным весом должны добавляться сами',
+    );
   });
 
   test('совет по весу приходит с программой и молчит без истории', async () => {
     await call('/api/program', ALICE, {
       method: 'POST',
-      body: JSON.stringify({ daysPerWeek: 3, place: 'gym' }),
+      body: JSON.stringify({ daysPerWeek: 3, equipment: GYM_EQUIPMENT }),
     });
 
     const plan = await program();
@@ -622,7 +650,7 @@ describe('Программа тренировок', () => {
   test('упражнение можно заменить, не пересобирая программу', async () => {
     await call('/api/program', ALICE, {
       method: 'POST',
-      body: JSON.stringify({ daysPerWeek: 3, place: 'gym' }),
+      body: JSON.stringify({ daysPerWeek: 3, equipment: GYM_EQUIPMENT }),
     });
 
     const before = await program();
