@@ -25,7 +25,8 @@
     "audit:cache": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-cache.ts",
     "audit:recipes": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-recipes.ts",
     "audit:gaps": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/audit-gaps.ts",
-    "db:cleanup": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/cleanup-prod.ts"
+    "db:cleanup": "node --env-file-if-exists=.env node_modules/.bin/tsx src/db/cleanup-prod.ts",
+    "deploy:status": "tsx tools/deploy-status.ts"
   },
   "overrides": {
     "valibot": "^1.4.2",
