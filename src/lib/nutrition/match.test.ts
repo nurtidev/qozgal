@@ -70,9 +70,53 @@ describe('Состояние продукта', () => {
     assert.equal(best, cooked);
   });
 
-  test('без указания приготовления выигрывает более чистое имя', () => {
-    // Модель не сказала, как приготовлено, — гадать за неё нечем
-    assert.equal(pickBestMatch({ nameEn: 'buckwheat' }, [dry, cooked]), dry);
+  test('без указания приготовления крупа считается варёной', () => {
+    /**
+     * Молчание модели о способе для крупы значит «приготовлено неизвестно
+     * как», а не «сырое»: сухую гречку не едят. Раньше здесь выигрывало
+     * сухое зерно — 343 ккал против 92, завышение вчетверо, и выглядело
+     * оно как обычное посчитанное число.
+     */
+    assert.equal(pickBestMatch({ nameEn: 'buckwheat' }, [dry, cooked]), cooked);
+  });
+
+  test('мясо без указания приготовления не считается сырым', () => {
+    // Из живого бота: «куриная грудка 150 г» — человек кладёт на весы
+    // готовое мясо, а карточка сырого давала 120 ккал/100 г против 165
+    const raw = usda('Chicken, breast, meat only, raw', { kcalPer100g: 120 });
+    const grilled = usda('Chicken, breast, meat only, cooked, grilled', {
+      kcalPer100g: 165,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'chicken breast' }, [raw, grilled]), grilled);
+  });
+
+  test('сырая карточка отбрасывается, даже когда готовой нет', () => {
+    // Ручной ввод честнее счёта по сырому весу: ошибка тихая, человек
+    // увидит правдоподобное число и подтвердит его не глядя
+    const raw = usda('Chicken, breast, meat only, raw', { kcalPer100g: 120 });
+    assert.equal(pickBestMatch({ nameEn: 'chicken breast' }, [raw]), null);
+  });
+
+  test('макароны без указания приготовления не считаются сухими', () => {
+    // Здесь та же ошибка врёт в обратную сторону: 288 против 131
+    const fresh = usda('Pasta, fresh-refrigerated, plain, as purchased', {
+      kcalPer100g: 288,
+    });
+    const boiled = usda('Pasta, cooked, enriched, without added salt', {
+      kcalPer100g: 131,
+    });
+    assert.equal(pickBestMatch({ nameEn: 'pasta' }, [fresh, boiled]), boiled);
+  });
+
+  test('продукт, который едят сырым, правила не касаются', () => {
+    /**
+     * Обратная сторона того же правила: для яблока молчание о способе
+     * означает именно сырое, и печёное (113 ккал против 61) не должно
+     * выигрывать оттого, что оно приготовлено.
+     */
+    const raw = usda('Apples, raw, with skin', { kcalPer100g: 61 });
+    const baked = usda('Apples, baked', { kcalPer100g: 113 });
+    assert.equal(pickBestMatch({ nameEn: 'apple' }, [raw, baked]), raw);
   });
 
   test('сырое вместо жареного отбрасывается', () => {

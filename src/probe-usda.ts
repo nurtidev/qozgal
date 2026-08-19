@@ -40,6 +40,14 @@ const PROBES: Probe[] = [
   { nameEn: 'potato', preparation: 'boiled', expect: 'варёный картофель ~87' },
   { nameEn: 'potato', preparation: 'fried', expect: 'жареный картофель ~270' },
   { nameEn: 'chicken breast', preparation: 'grilled', expect: 'грудка готовая ~165' },
+  /**
+   * Способ не назван — так приходит из бота, когда человек пишет «куриная
+   * грудка 150 г». До правила про продукты, которые сырыми не едят, здесь
+   * выигрывала карточка сырого мяса: 120 ккал/100 г против 165.
+   */
+  { nameEn: 'chicken breast', expect: 'готовая грудка, а не сырое мясо (120)' },
+  { nameEn: 'pasta', expect: 'варёные макароны ~131, не сухие (288)' },
+  { nameEn: 'buckwheat', expect: 'варёная гречка ~92, не сухое зерно (343)' },
   { nameEn: 'beef', preparation: 'boiled', expect: 'варёная говядина, не сырая' },
   { nameEn: 'egg', preparation: 'boiled', expect: 'варёное яйцо ~155' },
   { nameEn: 'whole milk', expect: 'цельное молоко ~61, не обезжиренное (34)' },

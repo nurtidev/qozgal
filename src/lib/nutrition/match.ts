@@ -79,6 +79,42 @@ const COOKED_WORDS = [
 ];
 
 /**
+ * Продукты, которые сырыми не едят.
+ *
+ * Список нужен потому, что молчание о способе приготовления значит для них
+ * не то же, что для яблока. Модель ставит `unknown`, когда способ не назван,
+ * и до этого списка отбор понимал молчание как «сырое»: на «куриная грудка
+ * 150 г» из живого бота выигрывала карточка `Chicken, breast, meat only,
+ * raw` — 120 ккал/100 г против 165 у готовой. Человек кладёт на весы
+ * приготовленное мясо, а счёт получал по сырому: четверть калорий и белка
+ * мимо, на самом частом продукте дефицита. На макаронах та же механика
+ * врёт в обратную сторону: `Pasta, fresh-refrigerated, as purchased` —
+ * 288 ккал против 131 у варёных.
+ *
+ * Ошибка тихая — не отказ «не смогли», а число, которое выглядит
+ * посчитанным. Поэтому сырая карточка здесь отбрасывается, даже если
+ * приготовленной в USDA не найдётся: ручной ввод честнее.
+ *
+ * Список узкий намеренно. Помидор, яблоко, молоко сюда не входят — там
+ * «сырое» и есть верный ответ на молчание, и правило, отсекающее
+ * `Apple, baked` (113 ккал против 61 у сырого), должно работать дальше.
+ */
+const RAW_INEDIBLE_WORDS = [
+  // мясо и птица; ветчина и бекон сюда не входят — они уже готовые
+  'meat', 'beef', 'veal', 'pork', 'lamb', 'mutton', 'chicken', 'turkey',
+  'duck', 'goose', 'poultry', 'liver',
+  // рыба и морепродукты
+  'fish', 'salmon', 'cod', 'tuna', 'trout', 'pollock', 'perch', 'shrimp',
+  'squid', 'mussels',
+  // крупы, макароны, бобовые — здесь расхождение сухого и варёного кратное
+  'rice', 'pasta', 'spaghetti', 'macaroni', 'noodles', 'buckwheat', 'oats',
+  'oatmeal', 'quinoa', 'bulgur', 'couscous', 'lentils', 'beans', 'chickpeas',
+  // овощи, которые готовят
+  'potato', 'eggplant',
+  'egg',
+];
+
+/**
  * Формы, в которых продукт перестаёт быть собой.
  *
  * Отбраковывают кандидата, если запрос о них не просил. Список появился
@@ -233,6 +269,7 @@ const COOKED = new Set(COOKED_WORDS.map(singular));
 const PROCESSED = new Set(PROCESSED_FORMS.map(singular));
 const CATEGORIES = new Set(CATEGORY_WORDS.map(singular));
 const PARTS = new Set(PART_WORDS.map(singular));
+const RAW_INEDIBLE = new Set(RAW_INEDIBLE_WORDS.map(singular));
 
 /** Предлоги, после которых слово читается как уточнение, а не как продукт */
 const QUALIFYING_PREPOSITIONS = new Set(['with', 'without', 'in']);
@@ -429,6 +466,26 @@ const WEIGHTS = {
   unaskedCooking: -0.5,
   /** Замороженная заготовка там, где способ приготовления не назван */
   frozenBlank: -1,
+  /**
+   * Сырая карточка у продукта, который сырым не едят, когда способ не назван.
+   *
+   * Хватает на отбраковку: база с надёжностью дают 1.5 при пороге 0.5.
+   * Так и задумано — на «куриная грудка» сырая карточка не должна побеждать
+   * ни при каких прочих совпадениях, а если готовой в USDA нет, позиция
+   * уйдёт в ручной ввод.
+   */
+  rawUncooked: -2,
+  /**
+   * Приготовленное там, где сырым не едят и способ не назван.
+   *
+   * Зеркало предыдущего веса: мало отбросить сырое, надо ещё выбрать
+   * готовое. Без бонуса `Buckwheat` (сухая крупа, 343 ккал) и `Buckwheat
+   * groats, roasted, cooked` (92) шли вровень — про состояние первая
+   * молчит, а не противоречит, — и отбор отказывался выбирать между ними
+   * из-за кратной разницы в калорийности. Отказ здесь хуже выбора:
+   * правильный ответ известен.
+   */
+  expectedCooking: 1,
   /** Лишнее значимое слово вне сегмента совпадения */
   noise: -0.3,
 } as const;
@@ -726,6 +783,24 @@ export function scoreCandidate(
     } else {
       score += WEIGHTS.stateUnconfirmed;
     }
+  } else if (core.some((token) => RAW_INEDIBLE.has(token))) {
+    /**
+     * Способ не назван, но продукт этот сырым не едят.
+     *
+     * Здесь молчание модели читается наоборот, чем у яблока: раз человек
+     * записал мясо, крупу или макароны, на весах у него приготовленное.
+     * Замороженная заготовка идёт тем же путём — «frozen» без пометки
+     * о готовке это полуфабрикат, а не то, что лежало на тарелке.
+     */
+    const frozenBlank =
+      descriptionTokens.includes('frozen') &&
+      !affirms(descriptionTokens, GENERIC_COOKED);
+    const raw = frozenBlank || descriptionTokens.some((t) => RAW.has(t));
+    const cooked =
+      affirms(descriptionTokens, GENERIC_COOKED) ||
+      affirms(descriptionTokens, COOKED);
+    if (raw && !cooked) score += WEIGHTS.rawUncooked;
+    else if (cooked) score += WEIGHTS.expectedCooking;
   } else if (
     descriptionTokens.includes('frozen') &&
     !affirms(descriptionTokens, GENERIC_COOKED)
